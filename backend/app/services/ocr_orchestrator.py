@@ -7,15 +7,14 @@ import asyncio
 from app.services.gemini_ocr_service import GeminiOCRService
 from app.services.pdf_preprocessor import pdf_to_images
 from app.models.schemas import OCRResult, FigureData
-from supabase import Client
 
 
 class OCROrchestrator:
     """OCR処理全体の管理"""
 
-    def __init__(self, gemini_service: GeminiOCRService, supabase_client: Client):
+    def __init__(self, gemini_service: GeminiOCRService, db_client):
         self.gemini = gemini_service
-        self.supabase = supabase_client
+        self.db_client = db_client
 
     async def process_pdf(
         self,
@@ -38,7 +37,7 @@ class OCROrchestrator:
         page_count = len(page_images)
 
         # ページ数をDBに記録
-        self.supabase.table('translation_jobs').update({
+        self.db_client.table('translation_jobs').update({
             'page_count': page_count,
             'ocr_status': 'processing'
         }).eq('id', job_id).execute()
@@ -116,17 +115,17 @@ class OCROrchestrator:
 
                 try:
                     # アップロード
-                    self.supabase.storage.from_('figures').upload(
+                    self.db_client.storage.from_('figures').upload(
                         file_path,
                         fig_img,
                         {'content-type': 'image/png'}
                     )
 
                     # 公開URLを取得
-                    image_url = self.supabase.storage.from_('figures').get_public_url(file_path)
+                    image_url = self.db_client.storage.from_('figures').get_public_url(file_path)
 
                     # DBに記録
-                    self.supabase.table('figures').insert({
+                    self.db_client.table('figures').insert({
                         'job_id': job_id,
                         'page_number': page_num,
                         'figure_number': fig.id,
@@ -152,14 +151,14 @@ class OCROrchestrator:
 
         try:
             # アップロード
-            self.supabase.storage.from_('documents').upload(
+            self.db_client.storage.from_('documents').upload(
                 file_path,
                 markdown.encode('utf-8'),
                 {'content-type': 'text/markdown'}
             )
 
             # 公開URLを取得
-            url = self.supabase.storage.from_('documents').get_public_url(file_path)
+            url = self.db_client.storage.from_('documents').get_public_url(file_path)
             return url
 
         except Exception as e:
@@ -196,7 +195,7 @@ class OCROrchestrator:
             ]
         }
 
-        self.supabase.table('translation_jobs').update({
+        self.db_client.table('translation_jobs').update({
             'layout_metadata': layout_metadata,
             'figures_data': figures_data,
             'page_count': len(ocr_results),

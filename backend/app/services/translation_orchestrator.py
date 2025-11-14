@@ -5,8 +5,8 @@
 from app.services.claude_translator import ClaudeTranslator
 from app.services.gemini_translator import GeminiTranslator
 from typing import Literal
-from supabase import Client
 import httpx
+from pathlib import Path
 
 
 TranslatorEngine = Literal['claude', 'gemini']
@@ -19,11 +19,11 @@ class TranslationOrchestrator:
         self,
         claude_api_key: str,
         gemini_api_key: str,
-        supabase_client: Client
+        supabase_client
     ):
         self.claude = ClaudeTranslator(claude_api_key)
         self.gemini = GeminiTranslator(gemini_api_key)
-        self.supabase = supabase_client
+        self.db_client = supabase_client
 
     async def translate_document(
         self,
@@ -44,7 +44,7 @@ class TranslationOrchestrator:
         """
 
         # 1. マスターマークダウンを取得
-        job = self.supabase.table('translation_jobs').select('*').eq('id', job_id).single().execute()
+        job = self.db_client.table('translation_jobs').select('*').eq('id', job_id).single().execute()
 
         if not job.data:
             raise Exception(f"Job {job_id} not found")
@@ -85,6 +85,13 @@ class TranslationOrchestrator:
         """StorageからテキストダウンロードまたはURLから直接取得"""
 
         try:
+            # ローカルファイルの場合
+            if url.startswith('file://'):
+                file_path = url.replace('file://', '')
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+
+            # HTTPの場合
             async with httpx.AsyncClient() as client:
                 response = await client.get(url)
                 response.raise_for_status()
@@ -104,14 +111,14 @@ class TranslationOrchestrator:
 
         try:
             # アップロード
-            self.supabase.storage.from_('documents').upload(
+            self.db_client.storage.from_('documents').upload(
                 file_path,
                 text.encode('utf-8'),
                 {'content-type': 'text/markdown'}
             )
 
             # 公開URLを取得
-            url = self.supabase.storage.from_('documents').get_public_url(file_path)
+            url = self.db_client.storage.from_('documents').get_public_url(file_path)
             return url
 
         except Exception as e:

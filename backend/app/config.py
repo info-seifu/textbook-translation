@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str
     CLAUDE_API_KEY: str
 
-    # Supabase
-    SUPABASE_URL: str
-    SUPABASE_KEY: str
-    SUPABASE_SERVICE_KEY: str
+    # Supabase (オプショナル - ローカル動作時は不要)
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
 
     # Backend
     BACKEND_PORT: int = 8000

@@ -1,35 +1,47 @@
 """
-Supabase クライアント設定
+データベースクライアント設定
+ローカル環境ではJSONベースのデータベースを使用
 """
-from supabase import create_client, Client
-from app.config import settings
+from app.utils.local_db import get_local_db
+from app.utils.local_storage import get_local_storage
 
 
-def get_supabase_client() -> Client:
+class LocalClient:
+    """ローカルクライアント（Supabase互換）"""
+
+    def __init__(self):
+        self._db = get_local_db()
+        self._storage = get_local_storage()
+
+    def table(self, table_name: str):
+        """テーブルを取得"""
+        return self._db.table(table_name)
+
+    @property
+    def storage(self):
+        """ストレージを取得"""
+        return self._storage
+
+
+def get_supabase_client():
     """
-    Supabaseクライアントを取得
+    データベースクライアントを取得（ローカル版）
 
     Returns:
-        Client: Supabaseクライアント
+        LocalClient: ローカルクライアント
     """
-    return create_client(
-        supabase_url=settings.SUPABASE_URL,
-        supabase_key=settings.SUPABASE_KEY
-    )
+    return LocalClient()
 
 
-def get_supabase_admin_client() -> Client:
+def get_supabase_admin_client():
     """
-    Supabase管理者クライアントを取得（サービスキー使用）
+    管理者クライアントを取得（ローカル版）
 
     Returns:
-        Client: Supabase管理者クライアント
+        LocalClient: ローカルクライアント
     """
-    return create_client(
-        supabase_url=settings.SUPABASE_URL,
-        supabase_key=settings.SUPABASE_SERVICE_KEY
-    )
+    return LocalClient()
 
 
-# グローバルクライアント（オプション）
-supabase: Client = get_supabase_client()
+# グローバルクライアント
+supabase = get_supabase_client()
