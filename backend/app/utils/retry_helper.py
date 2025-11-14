@@ -3,7 +3,7 @@
 API呼び出しのリトライとエラーハンドリングを提供
 """
 import asyncio
-from typing import Callable, Any, TypeVar, Optional
+from typing import Callable, Any, TypeVar
 from functools import wraps
 import logging
 

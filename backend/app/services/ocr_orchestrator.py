@@ -6,7 +6,7 @@ from typing import List
 import asyncio
 from app.services.gemini_ocr_service import GeminiOCRService
 from app.services.pdf_preprocessor import pdf_to_images
-from app.models.schemas import OCRResult, FigureData
+from app.models.schemas import OCRResult
 
 
 class OCROrchestrator:

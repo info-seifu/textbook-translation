@@ -3,8 +3,7 @@ JSONベースのローカルデータベース
 Supabaseの代わりにJSONファイルでデータを管理
 """
 import json
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from datetime import datetime
 from uuid import uuid4
 from pathlib import Path

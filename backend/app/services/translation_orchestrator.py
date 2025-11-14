@@ -6,7 +6,6 @@ from app.services.claude_translator import ClaudeTranslator
 from app.services.gemini_translator import GeminiTranslator
 from typing import Literal
 import httpx
-from pathlib import Path
 
 
 TranslatorEngine = Literal['claude', 'gemini']
@@ -61,16 +60,11 @@ class TranslationOrchestrator:
         translator = self.claude if translator_engine == 'claude' else self.gemini
 
         # 3. 翻訳実行
-        import time
-        start_time = time.time()
-
         translated_text = await translator.translate(
             master_text,
             target_language,
             context=job.data.get('layout_metadata')
         )
-
-        duration = time.time() - start_time
 
         # 4. 翻訳結果を保存
         translated_url = await self._save_translation(

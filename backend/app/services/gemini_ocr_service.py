@@ -2,8 +2,7 @@
 Gemini OCRサービス
 """
 import google.generativeai as genai
-from typing import TypedDict, List, Optional
-import base64
+from typing import List
 import json
 import re
 from PIL import Image
@@ -138,7 +137,7 @@ class GeminiOCRService:
             try:
                 data = json.loads(response_text)
             except json.JSONDecodeError:
-                raise ValueError(f"Failed to parse Gemini response: No valid JSON found")
+                raise ValueError("Failed to parse Gemini response: No valid JSON found")
         else:
             data = json.loads(json_match.group(1))
 

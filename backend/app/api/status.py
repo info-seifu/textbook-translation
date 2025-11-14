@@ -4,7 +4,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.utils.supabase_client import get_supabase_admin_client
-from app.models.schemas import JobStatusResponse, TranslationOutput
+from app.models.schemas import JobStatusResponse
 
 
 router = APIRouter()

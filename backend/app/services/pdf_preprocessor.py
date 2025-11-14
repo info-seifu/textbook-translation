@@ -2,7 +2,6 @@
 PDF前処理サービス
 """
 from pdf2image import convert_from_path
-from PIL import Image
 import io
 from typing import List
 

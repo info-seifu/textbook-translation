@@ -2,9 +2,8 @@
 ダウンロードAPI
 """
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import Response
 import httpx
-import io
 
 from app.utils.supabase_client import get_supabase_admin_client
 
