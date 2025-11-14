@@ -4,6 +4,10 @@ Claude翻訳サービス
 from anthropic import AsyncAnthropic
 from typing import Optional
 from app.services.translator_base import TranslatorBase
+from app.utils.retry_helper import with_retry
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeTranslator(TranslatorBase):
@@ -24,15 +28,18 @@ class ClaudeTranslator(TranslatorBase):
         self.client = AsyncAnthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
 
+    @with_retry(max_retries=3, initial_delay=2.0)
     async def translate(
         self,
         source_text: str,
         target_language: str,
         context: Optional[dict] = None
     ) -> str:
-        """Claude Sonnetで翻訳"""
+        """Claude Sonnetで翻訳（リトライ機能付き）"""
 
         target_lang_name = self.LANGUAGE_NAMES.get(target_language, target_language)
+
+        logger.info(f"Starting translation to {target_language} using Claude Sonnet")
 
         prompt = f"""
 あなたは教育教材の翻訳専門家です。
@@ -76,10 +83,14 @@ class ClaudeTranslator(TranslatorBase):
                 messages=[{
                     "role": "user",
                     "content": prompt
-                }]
+                }],
+                timeout=120.0  # 2分のタイムアウト
             )
 
-            return response.content[0].text
+            translated_text = response.content[0].text
+            logger.info(f"Translation completed successfully. Output length: {len(translated_text)} chars")
+            return translated_text
 
         except Exception as e:
+            logger.error(f"Claude translation failed: {str(e)}")
             raise Exception(f"Claude translation failed: {str(e)}")

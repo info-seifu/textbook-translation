@@ -4,6 +4,10 @@ Gemini翻訳サービス
 import google.generativeai as genai
 from typing import Optional
 from app.services.translator_base import TranslatorBase
+from app.utils.retry_helper import with_retry
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiTranslator(TranslatorBase):
@@ -24,15 +28,18 @@ class GeminiTranslator(TranslatorBase):
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
+    @with_retry(max_retries=3, initial_delay=2.0)
     async def translate(
         self,
         source_text: str,
         target_language: str,
         context: Optional[dict] = None
     ) -> str:
-        """Gemini Flashで翻訳"""
+        """Gemini Flashで翻訳（リトライ機能付き）"""
 
         target_lang_name = self.LANGUAGE_NAMES.get(target_language, target_language)
+
+        logger.info(f"Starting translation to {target_language} using Gemini Flash")
 
         prompt = f"""
 You are an expert translator specializing in educational materials.
@@ -71,7 +78,10 @@ Provide ONLY the translated markdown in {target_lang_name}. No explanations or c
 
         try:
             response = await self.model.generate_content_async(prompt)
-            return response.text
+            translated_text = response.text
+            logger.info(f"Translation completed successfully. Output length: {len(translated_text)} chars")
+            return translated_text
 
         except Exception as e:
+            logger.error(f"Gemini translation failed: {str(e)}")
             raise Exception(f"Gemini translation failed: {str(e)}")

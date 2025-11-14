@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 import os
 
 from app.config import settings
-from app.api import upload, translate, status, download
+from app.api import upload, translate, status, download, batch_translate
 
 
 @asynccontextmanager
@@ -68,6 +68,7 @@ async def health_check():
 # APIルーターの登録
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(translate.router, prefix="/api", tags=["translate"])
+app.include_router(batch_translate.router, prefix="/api", tags=["batch-translate"])
 app.include_router(status.router, prefix="/api", tags=["status"])
 app.include_router(download.router, prefix="/api", tags=["download"])
 
