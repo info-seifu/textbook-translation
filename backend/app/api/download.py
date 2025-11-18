@@ -6,6 +6,8 @@ from fastapi.responses import Response
 import httpx
 
 from app.utils.supabase_client import get_supabase_admin_client
+from app.services.html_generator import HTMLGenerator
+from app.services.pdf_generator import PDFGenerator
 
 
 router = APIRouter()
@@ -121,3 +123,155 @@ async def download_master_markdown(job_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to download master markdown: {str(e)}")
+
+
+@router.get("/download/{output_id}/html")
+async def download_html(output_id: str):
+    """
+    翻訳済みHTMLをダウンロード
+
+    Args:
+        output_id: 翻訳出力ID
+
+    Returns:
+        レイアウト付きHTMLファイル
+    """
+
+    supabase = get_supabase_admin_client()
+
+    try:
+        # 翻訳出力情報取得
+        output = supabase.table('translation_outputs').select('*').eq('id', output_id).single().execute()
+
+        if not output.data:
+            raise HTTPException(status_code=404, detail=f"Output {output_id} not found")
+
+        if output.data['status'] != 'completed':
+            raise HTTPException(
+                status_code=400,
+                detail=f"Translation not completed (status: {output.data['status']})"
+            )
+
+        job_id = output.data['job_id']
+        target_language = output.data['target_language']
+
+        # ジョブ情報を取得（レイアウトメタデータ取得のため）
+        job = supabase.table('translation_jobs').select('*').eq('id', job_id).single().execute()
+
+        if not job.data:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+        layout_metadata = job.data.get('layout_metadata')
+
+        # マークダウンURLを取得
+        markdown_url = output.data.get('translated_markdown_url')
+
+        if not markdown_url:
+            raise HTTPException(status_code=404, detail="Translated markdown not found")
+
+        # Storageからマークダウンをダウンロード
+        async with httpx.AsyncClient() as client:
+            response = await client.get(markdown_url)
+            response.raise_for_status()
+            markdown_text = response.text
+
+        # HTMLを生成
+        html_generator = HTMLGenerator()
+        html_content = html_generator.generate_html(
+            markdown_text,
+            layout_metadata,
+            target_language,
+            job_id
+        )
+
+        # ファイル名生成
+        filename = f"translated_{target_language}.html"
+
+        return Response(
+            content=html_content.encode('utf-8'),
+            media_type='text/html',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to download HTML: {str(e)}")
+
+
+@router.get("/download/{output_id}/pdf")
+async def download_pdf(output_id: str):
+    """
+    翻訳済みPDFをダウンロード
+
+    Args:
+        output_id: 翻訳出力ID
+
+    Returns:
+        レイアウト付きPDFファイル
+    """
+
+    supabase = get_supabase_admin_client()
+
+    try:
+        # 翻訳出力情報取得
+        output = supabase.table('translation_outputs').select('*').eq('id', output_id).single().execute()
+
+        if not output.data:
+            raise HTTPException(status_code=404, detail=f"Output {output_id} not found")
+
+        if output.data['status'] != 'completed':
+            raise HTTPException(
+                status_code=400,
+                detail=f"Translation not completed (status: {output.data['status']})"
+            )
+
+        job_id = output.data['job_id']
+        target_language = output.data['target_language']
+
+        # ジョブ情報を取得（レイアウトメタデータ取得のため）
+        job = supabase.table('translation_jobs').select('*').eq('id', job_id).single().execute()
+
+        if not job.data:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+        layout_metadata = job.data.get('layout_metadata')
+
+        # マークダウンURLを取得
+        markdown_url = output.data.get('translated_markdown_url')
+
+        if not markdown_url:
+            raise HTTPException(status_code=404, detail="Translated markdown not found")
+
+        # Storageからマークダウンをダウンロード
+        async with httpx.AsyncClient() as client:
+            response = await client.get(markdown_url)
+            response.raise_for_status()
+            markdown_text = response.text
+
+        # PDFを生成
+        pdf_generator = PDFGenerator()
+        pdf_content = pdf_generator.generate_pdf_from_markdown(
+            markdown_text,
+            layout_metadata,
+            target_language,
+            job_id
+        )
+
+        # ファイル名生成
+        filename = f"translated_{target_language}.pdf"
+
+        return Response(
+            content=pdf_content,
+            media_type='application/pdf',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to download PDF: {str(e)}")
