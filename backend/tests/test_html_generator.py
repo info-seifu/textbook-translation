@@ -65,9 +65,12 @@ class TestHTMLGenerator:
     ):
         """generate_html - 縦書きHTML生成"""
         vertical_metadata = {
-            "writing_mode": "vertical",
-            "columns": 1,
-            "primary_direction": "vertical"
+            "pages": [
+                {
+                    "detected_writing_mode": "vertical",
+                    "columns": 1
+                }
+            ]
         }
 
         html = html_generator.generate_html(

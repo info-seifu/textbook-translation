@@ -33,11 +33,18 @@ class TestUploadAPI:
     """アップロードAPIの統合テスト"""
 
     @patch('app.api.upload.OCROrchestrator')
-    def test_upload_pdf_success(self, mock_orchestrator_class, client, mock_pdf_file):
+    @patch('app.api.upload.get_supabase_admin_client')
+    def test_upload_pdf_success(
+        self, mock_supabase, mock_orchestrator_class, client, mock_pdf_file
+    ):
         """upload_pdf - 成功ケース"""
         # モックのオーケストレーターインスタンスを設定
         mock_orchestrator = MagicMock()
         mock_orchestrator_class.return_value = mock_orchestrator
+
+        # モックのSupabaseクライアントを設定
+        mock_storage = MagicMock()
+        mock_supabase.return_value = mock_storage
 
         response = client.post(
             "/api/upload",
@@ -114,9 +121,19 @@ class TestUploadAPI:
 class TestUploadAPIValidation:
     """アップロードAPIのバリデーションテスト"""
 
-    def test_upload_empty_pdf(self, client):
+    @patch('app.api.upload.OCROrchestrator')
+    @patch('app.api.upload.get_supabase_admin_client')
+    def test_upload_empty_pdf(
+        self, mock_supabase, mock_orchestrator_class, client
+    ):
         """upload_pdf - 空のPDFファイル"""
         empty_file = ("empty.pdf", BytesIO(b""), "application/pdf")
+
+        # モック設定
+        mock_orchestrator = MagicMock()
+        mock_orchestrator_class.return_value = mock_orchestrator
+        mock_storage = MagicMock()
+        mock_supabase.return_value = mock_storage
 
         response = client.post(
             "/api/upload",
@@ -127,10 +144,20 @@ class TestUploadAPIValidation:
         # ここでは400または200のいずれかを期待
         assert response.status_code in [200, 400]
 
-    def test_upload_invalid_content_type(self, client):
+    @patch('app.api.upload.OCROrchestrator')
+    @patch('app.api.upload.get_supabase_admin_client')
+    def test_upload_invalid_content_type(
+        self, mock_supabase, mock_orchestrator_class, client
+    ):
         """upload_pdf - 不正なContent-Type"""
         # PDFの拡張子だが、Content-Typeが違う
         file = ("test.pdf", BytesIO(b"not a pdf"), "text/plain")
+
+        # モック設定
+        mock_orchestrator = MagicMock()
+        mock_orchestrator_class.return_value = mock_orchestrator
+        mock_storage = MagicMock()
+        mock_supabase.return_value = mock_storage
 
         response = client.post(
             "/api/upload",
@@ -141,10 +168,20 @@ class TestUploadAPIValidation:
         # 実装依存なので、両方許容
         assert response.status_code in [200, 400]
 
-    def test_upload_filename_validation(self, client):
+    @patch('app.api.upload.OCROrchestrator')
+    @patch('app.api.upload.get_supabase_admin_client')
+    def test_upload_filename_validation(
+        self, mock_supabase, mock_orchestrator_class, client
+    ):
         """upload_pdf - ファイル名のバリデーション"""
         # 特殊文字を含むファイル名
         special_filename = ("test<>|.pdf", BytesIO(b'%PDF-1.4\n%%EOF'), "application/pdf")
+
+        # モック設定
+        mock_orchestrator = MagicMock()
+        mock_orchestrator_class.return_value = mock_orchestrator
+        mock_storage = MagicMock()
+        mock_supabase.return_value = mock_storage
 
         # ファイル名のサニタイズが実装されているかテスト
         # 期待: エラーまたは正常にサニタイズされて処理

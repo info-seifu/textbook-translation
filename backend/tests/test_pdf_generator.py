@@ -40,7 +40,7 @@ def sample_layout_metadata():
 class TestPDFGenerator:
     """PDFジェネレーターのテスト"""
 
-    @patch('app.services.pdf_generator.HTML')
+    @patch('weasyprint.HTML')
     def test_generate_pdf_from_markdown_basic(
         self,
         mock_html_class,
@@ -64,7 +64,7 @@ class TestPDFGenerator:
         assert isinstance(pdf_bytes, bytes)
         assert pdf_bytes.startswith(b'%PDF') or len(pdf_bytes) > 0
 
-    @patch('app.services.pdf_generator.HTML')
+    @patch('weasyprint.HTML')
     def test_generate_pdf_empty_markdown(
         self,
         mock_html_class,
@@ -85,7 +85,7 @@ class TestPDFGenerator:
 
         assert isinstance(pdf_bytes, bytes)
 
-    @patch('app.services.pdf_generator.HTML')
+    @patch('weasyprint.HTML')
     def test_generate_pdf_with_vertical_writing(
         self,
         mock_html_class,

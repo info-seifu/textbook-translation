@@ -57,8 +57,22 @@ class TestOCROrchestrator:
 
     def test_merge_markdown(self, orchestrator, sample_ocr_result):
         """_merge_markdown - マークダウン統合"""
-        ocr_results = [sample_ocr_result, sample_ocr_result]
-        ocr_results[1].page_number = 2
+        # 2つ目のOCR結果を別のインスタンスとして作成
+        ocr_result_1 = sample_ocr_result
+        ocr_result_2 = OCRResult(
+            page_number=2,
+            markdown_text="# テストページ\n\nテスト内容です。",
+            figures=[],
+            layout_info=LayoutInfo(
+                primary_direction="horizontal",
+                columns=1,
+                has_ruby=False,
+                special_elements=[],
+                mixed_regions=[]
+            ),
+            detected_writing_mode="horizontal"
+        )
+        ocr_results = [ocr_result_1, ocr_result_2]
 
         merged = orchestrator._merge_markdown(ocr_results)
 
