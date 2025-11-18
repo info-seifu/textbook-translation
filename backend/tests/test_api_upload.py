@@ -3,7 +3,7 @@
 """
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 from io import BytesIO
 
 from app.main import app
@@ -40,6 +40,10 @@ class TestUploadAPI:
         """upload_pdf - 成功ケース"""
         # モックのオーケストレーターインスタンスを設定
         mock_orchestrator = MagicMock()
+        # process_pdfは非同期関数なのでAsyncMockを使用
+        mock_orchestrator.process_pdf = AsyncMock(
+            return_value="https://example.com/master.md"
+        )
         mock_orchestrator_class.return_value = mock_orchestrator
 
         # モックのSupabaseクライアントを設定

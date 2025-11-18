@@ -51,7 +51,10 @@ class TestPDFGenerator:
         """generate_pdf_from_markdown - 基本PDF生成"""
         # モックHTML
         mock_html = MagicMock()
-        mock_html.write_pdf.return_value = b'%PDF-1.4 test content'
+        # write_pdfはBytesIOオブジェクトに書き込むので、side_effectを使用
+        def write_pdf_side_effect(target, **kwargs):
+            target.write(b'%PDF-1.4 test content')
+        mock_html.write_pdf.side_effect = write_pdf_side_effect
         mock_html_class.return_value = mock_html
 
         pdf_bytes = pdf_generator.generate_pdf_from_markdown(
@@ -73,7 +76,9 @@ class TestPDFGenerator:
     ):
         """generate_pdf_from_markdown - 空のMarkdown"""
         mock_html = MagicMock()
-        mock_html.write_pdf.return_value = b'%PDF-1.4'
+        def write_pdf_side_effect(target, **kwargs):
+            target.write(b'%PDF-1.4')
+        mock_html.write_pdf.side_effect = write_pdf_side_effect
         mock_html_class.return_value = mock_html
 
         pdf_bytes = pdf_generator.generate_pdf_from_markdown(
@@ -100,7 +105,9 @@ class TestPDFGenerator:
         }
 
         mock_html = MagicMock()
-        mock_html.write_pdf.return_value = b'%PDF-1.4 vertical'
+        def write_pdf_side_effect(target, **kwargs):
+            target.write(b'%PDF-1.4 vertical')
+        mock_html.write_pdf.side_effect = write_pdf_side_effect
         mock_html_class.return_value = mock_html
 
         pdf_bytes = pdf_generator.generate_pdf_from_markdown(
