@@ -1,0 +1,73 @@
+# Git関連
+.git
+.gitignore
+.gitattributes
+
+# Python関連
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+dist/
+build/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# 環境変数ファイル（機密情報）
+.env
+.env.local
+.env.*.local
+
+# IDE設定
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ログファイル
+*.log
+logs/
+
+# 一時ファイル
+tmp/
+temp/
+*.tmp
+
+# アップロードファイル（実行時に作成される）
+uploads/
+storage/
+
+# PyInstallerビルド関連
+build.bat
+textbook-translation.spec
+launcher.py
+
+# ドキュメント
+*.md
+!README.md
+
+# テストファイル
+tests/
+test_*.py
+*_test.py
+
+# Docker関連
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# その他
+.coverage
+.pytest_cache
+*.db
+*.sqlite
+*.sqlite3

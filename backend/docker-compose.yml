@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: textbook-translation:latest
+    container_name: textbook-translation-app
+
+    # ポートマッピング
+    ports:
+      - "8000:8000"
+
+    # 環境変数
+    # .envファイルから自動で読み込まれます
+    env_file:
+      - .env
+
+    # 環境変数のオーバーライド（必要に応じて）
+    environment:
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+      - STORAGE_TYPE=local
+
+    # ボリュームマウント（ローカル開発用）
+    volumes:
+      # アップロードファイルの永続化
+      - ./uploads:/app/uploads
+      # ローカルストレージの永続化
+      - ./storage:/app/storage
+      # 開発時のホットリロード用（コメントアウト推奨：本番環境では不要）
+      # - ./app:/app/app
+
+    # ヘルスチェック
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+    # 再起動ポリシー
+    restart: unless-stopped
+
+    # リソース制限（必要に応じて調整）
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+# ボリューム定義（名前付きボリュームを使用する場合）
+# volumes:
+#   uploads:
+#   storage:
+
+# ネットワーク定義（必要に応じて）
+networks:
+  default:
+    name: textbook-translation-network
