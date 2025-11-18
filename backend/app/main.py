@@ -1,8 +1,10 @@
 """
 FastAPI メインアプリケーション
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
 import os
 
@@ -42,10 +44,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 静的ファイルとテンプレートの設定
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+templates = Jinja2Templates(directory="app/templates")
+
+
+# ========== WebUI Routes ==========
 
 @app.get("/")
-async def root():
-    """ルートエンドポイント"""
+async def index(request: Request):
+    """トップページ"""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/upload")
+async def upload_page(request: Request):
+    """アップロードページ"""
+    return templates.TemplateResponse("upload.html", {"request": request})
+
+
+@app.get("/status/{job_id}")
+async def status_page(request: Request, job_id: str):
+    """ステータスページ"""
+    return templates.TemplateResponse(
+        "status.html",
+        {"request": request, "job_id": job_id}
+    )
+
+
+# ========== API Routes ==========
+
+@app.get("/api")
+async def api_root():
+    """API ルートエンドポイント"""
     return {
         "message": "Textbook Translation API",
         "version": "1.0.0",

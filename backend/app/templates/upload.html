@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}翻訳開始 - 教科書翻訳システム{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <h2 class="text-3xl font-bold text-gray-800 mb-8">翻訳を開始</h2>
+
+    <!-- アップロードフォーム -->
+    <div class="bg-white rounded-lg shadow-md p-8">
+        <form id="uploadForm" class="space-y-6">
+            <!-- PDFアップロード -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    PDFファイル
+                </label>
+                <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-blue-500 transition">
+                    <input type="file" id="pdfFile" name="file" accept=".pdf" class="hidden">
+                    <div id="dropZoneContent">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                        </svg>
+                        <p class="mt-2 text-sm text-gray-600">
+                            クリックしてPDFを選択、またはドラッグ＆ドロップ
+                        </p>
+                        <p class="mt-1 text-xs text-gray-500">
+                            最大50MB
+                        </p>
+                    </div>
+                    <div id="fileInfo" class="hidden">
+                        <p class="text-green-600 font-semibold" id="fileName"></p>
+                        <p class="text-sm text-gray-500" id="fileSize"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 翻訳言語選択 -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    翻訳先言語（複数選択可）
+                </label>
+                <div class="grid grid-cols-2 gap-3">
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-blue-50">
+                        <input type="checkbox" name="languages" value="en" class="mr-2">
+                        <span>英語 (English)</span>
+                    </label>
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-blue-50">
+                        <input type="checkbox" name="languages" value="zh" class="mr-2">
+                        <span>中国語簡体字</span>
+                    </label>
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-blue-50">
+                        <input type="checkbox" name="languages" value="zh-TW" class="mr-2">
+                        <span>中国語繁体字</span>
+                    </label>
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-blue-50">
+                        <input type="checkbox" name="languages" value="ko" class="mr-2">
+                        <span>韓国語 (한국어)</span>
+                    </label>
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-blue-50">
+                        <input type="checkbox" name="languages" value="vi" class="mr-2">
+                        <span>ベトナム語</span>
+                    </label>
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-blue-50">
+                        <input type="checkbox" name="languages" value="th" class="mr-2">
+                        <span>タイ語 (ไทย)</span>
+                    </label>
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-blue-50">
+                        <input type="checkbox" name="languages" value="es" class="mr-2">
+                        <span>スペイン語</span>
+                    </label>
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-blue-50">
+                        <input type="checkbox" name="languages" value="fr" class="mr-2">
+                        <span>フランス語</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 翻訳エンジン選択 -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    翻訳エンジン
+                </label>
+                <div class="grid grid-cols-2 gap-3">
+                    <label class="flex items-center p-4 border-2 rounded-lg cursor-pointer hover:bg-blue-50 border-blue-600 bg-blue-50">
+                        <input type="radio" name="translator_engine" value="claude" checked class="mr-3">
+                        <div>
+                            <div class="font-semibold">Claude Sonnet</div>
+                            <div class="text-xs text-gray-500">高品質・自然な翻訳（推奨）</div>
+                        </div>
+                    </label>
+                    <label class="flex items-center p-4 border-2 rounded-lg cursor-pointer hover:bg-blue-50">
+                        <input type="radio" name="translator_engine" value="gemini" class="mr-3">
+                        <div>
+                            <div class="font-semibold">Gemini Flash</div>
+                            <div class="text-xs text-gray-500">高速・低コスト</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 送信ボタン -->
+            <div class="flex items-center justify-between pt-4">
+                <a href="/" class="text-gray-600 hover:text-gray-800">
+                    ← 戻る
+                </a>
+                <button type="submit" id="submitBtn" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    翻訳を開始
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 進捗表示 -->
+    <div id="progressSection" class="hidden mt-8 bg-white rounded-lg shadow-md p-8">
+        <h3 class="text-xl font-bold mb-4">処理中...</h3>
+
+        <!-- OCR進捗 -->
+        <div class="mb-6">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium">OCR処理</span>
+                <span id="ocrStatus" class="text-sm text-gray-500">待機中</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="ocrProgress" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- 翻訳進捗 -->
+        <div>
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium">翻訳処理</span>
+                <span id="translateStatus" class="text-sm text-gray-500">待機中</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="translateProgress" class="bg-green-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <p class="mt-4 text-sm text-gray-600">
+            処理には数分かかる場合があります。このページを閉じても処理は続行されます。
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/upload.js"></script>
+{% endblock %}

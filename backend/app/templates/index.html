@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}ホーム - 教科書翻訳システム{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- ヒーローセクション -->
+    <div class="text-center mb-12">
+        <h2 class="text-4xl font-bold text-gray-800 mb-4">
+            AI で教科書を多言語に翻訳
+        </h2>
+        <p class="text-xl text-gray-600 mb-8">
+            PDFをアップロードするだけで、8言語に高品質翻訳
+        </p>
+        <a href="/upload" class="inline-block bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition shadow-lg">
+            翻訳を開始する →
+        </a>
+    </div>
+
+    <!-- 機能紹介 -->
+    <div class="grid md:grid-cols-3 gap-6 mb-12">
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="text-3xl mb-3">📄</div>
+            <h3 class="text-lg font-bold mb-2">OCR機能</h3>
+            <p class="text-gray-600">Gemini APIで縦書き・横書き両対応の高精度OCR</p>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="text-3xl mb-3">🌐</div>
+            <h3 class="text-lg font-bold mb-2">8言語対応</h3>
+            <p class="text-gray-600">英語・中国語・韓国語など主要言語に対応</p>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="text-3xl mb-3">⚡</div>
+            <h3 class="text-lg font-bold mb-2">高品質翻訳</h3>
+            <p class="text-gray-600">Claude Sonnetによる自然で正確な翻訳</p>
+        </div>
+    </div>
+
+    <!-- 使い方 -->
+    <div class="bg-white rounded-lg shadow-md p-8">
+        <h3 class="text-2xl font-bold mb-6 text-gray-800">使い方</h3>
+        <ol class="space-y-4">
+            <li class="flex items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold mr-4">1</span>
+                <div>
+                    <strong class="block mb-1">PDFファイルをアップロード</strong>
+                    <span class="text-gray-600">教科書のPDFファイルをドラッグ＆ドロップまたは選択</span>
+                </div>
+            </li>
+
+            <li class="flex items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold mr-4">2</span>
+                <div>
+                    <strong class="block mb-1">翻訳言語を選択</strong>
+                    <span class="text-gray-600">翻訳したい言語を選択（複数選択可能）</span>
+                </div>
+            </li>
+
+            <li class="flex items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold mr-4">3</span>
+                <div>
+                    <strong class="block mb-1">翻訳を待つ</strong>
+                    <span class="text-gray-600">OCRと翻訳が自動で実行されます（数分〜数十分）</span>
+                </div>
+            </li>
+
+            <li class="flex items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold mr-4">4</span>
+                <div>
+                    <strong class="block mb-1">ダウンロード</strong>
+                    <span class="text-gray-600">Markdown・HTML・PDFの3形式でダウンロード可能</span>
+                </div>
+            </li>
+        </ol>
+
+        <div class="mt-8 text-center">
+            <a href="/upload" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition">
+                今すぐ始める
+            </a>
+        </div>
+    </div>
+
+    <!-- 対応言語 -->
+    <div class="mt-12 text-center">
+        <h3 class="text-xl font-bold mb-4 text-gray-800">対応言語</h3>
+        <div class="flex flex-wrap justify-center gap-3">
+            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full">英語</span>
+            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full">中国語（簡体字）</span>
+            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full">中国語（繁体字）</span>
+            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full">韓国語</span>
+            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full">ベトナム語</span>
+            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full">タイ語</span>
+            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full">スペイン語</span>
+            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full">フランス語</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
