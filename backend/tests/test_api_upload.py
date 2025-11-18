@@ -58,7 +58,8 @@ class TestUploadAPI:
         assert response.status_code == 200
         data = response.json()
         assert "job_id" in data
-        assert data["status"] == "processing"
+        # upload APIは常にpendingを返す（バックグラウンド処理のため）
+        assert data["status"] == "pending"
         assert "message" in data
 
     def test_upload_non_pdf_file(self, client):
