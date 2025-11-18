@@ -1,0 +1,45 @@
+# Fly.io デプロイ設定
+# https://fly.io/docs/reference/configuration/
+
+app = "textbook-translation"
+primary_region = "nrt"  # Tokyo region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  BACKEND_HOST = "0.0.0.0"
+  BACKEND_PORT = "8000"
+  STORAGE_TYPE = "local"
+
+# HTTPサービス設定
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+# ヘルスチェック
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/health"
+
+# マシン設定（Always Freeに近い最小構成）
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
+
+# 環境変数はシークレットとして設定
+# flyctl secrets set GEMINI_API_KEY=xxx
+# flyctl secrets set CLAUDE_API_KEY=xxx
