@@ -7,24 +7,35 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
 import os
+import logging
 
 from app.config import settings
 from app.api import upload, translate, status, download, batch_translate
+from app.utils.logging_config import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """アプリケーションライフサイクル管理"""
+    # ログ設定を初期化
+    setup_logging(
+        log_level=getattr(settings, 'LOG_LEVEL', 'INFO'),
+        enable_colors=True
+    )
+
     # 起動時の処理
-    print("🚀 Starting Textbook Translation API...")
+    logger.info("🚀 Starting Textbook Translation API...")
 
     # アップロードディレクトリの作成
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    logger.info(f"Upload directory: {settings.UPLOAD_DIR}")
 
     yield
 
     # 終了時の処理
-    print("👋 Shutting down Textbook Translation API...")
+    logger.info("👋 Shutting down Textbook Translation API...")
 
 
 # FastAPIアプリケーション作成
