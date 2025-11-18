@@ -4,7 +4,8 @@ Claude翻訳サービス
 from anthropic import AsyncAnthropic
 from typing import Optional
 from app.services.translator_base import TranslatorBase
-from app.utils.retry_helper import with_retry
+from app.utils.retry import async_retry
+from app.exceptions import APIRateLimitException
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,13 @@ class ClaudeTranslator(TranslatorBase):
         self.client = AsyncAnthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
 
-    @with_retry(max_retries=3, initial_delay=2.0)
+    @async_retry(
+        max_retries=3,
+        base_delay=2.0,
+        max_delay=60.0,
+        exceptions=(Exception,),
+        rate_limit_exceptions=(APIRateLimitException,)
+    )
     async def translate(
         self,
         source_text: str,

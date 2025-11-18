@@ -7,8 +7,13 @@ import json
 import re
 from PIL import Image
 import io
+import logging
 
 from app.models.schemas import OCRResult, FigureData, LayoutInfo, FigurePosition
+from app.utils.retry import async_retry
+from app.exceptions import OCRException, APIRateLimitException
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiOCRService:
@@ -18,6 +23,13 @@ class GeminiOCRService:
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
+    @async_retry(
+        max_retries=3,
+        base_delay=2.0,
+        max_delay=60.0,
+        exceptions=(Exception,),
+        rate_limit_exceptions=(APIRateLimitException,)
+    )
     async def extract_page(
         self,
         image_bytes: bytes,
@@ -39,6 +51,8 @@ class GeminiOCRService:
 
         # Gemini API呼び出し
         try:
+            logger.info(f"Starting OCR for page {page_number}")
+
             # 画像を PIL Image として準備
             image = Image.open(io.BytesIO(image_bytes))
 
@@ -48,10 +62,18 @@ class GeminiOCRService:
             ])
 
             # 結果パース
-            return self._parse_response(response.text, page_number)
+            result = self._parse_response(response.text, page_number)
+            logger.info(f"OCR completed for page {page_number}")
+            return result
 
         except Exception as e:
-            raise Exception(f"Gemini OCR failed for page {page_number}: {str(e)}")
+            logger.error(
+                f"Gemini OCR failed for page {page_number}: {str(e)}"
+            )
+            raise OCRException(
+                f"OCR failed for page {page_number}",
+                details={"page": page_number, "error": str(e)}
+            )
 
     def _build_ocr_prompt(self) -> str:
         """OCR用プロンプト生成"""
