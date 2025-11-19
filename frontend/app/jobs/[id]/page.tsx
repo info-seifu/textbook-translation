@@ -71,7 +71,11 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
     setError('')
 
     try {
-      await startTranslation(params.id, targetLanguage, translatorEngine)
+      await startTranslation({
+        job_id: params.id,
+        target_language: targetLanguage,
+        translator_engine: translatorEngine
+      })
       // ステータスを再読み込み
       await loadJobStatus()
     } catch (err: any) {
