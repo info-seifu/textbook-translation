@@ -45,29 +45,31 @@ Please refer to Figure 1.
 ![Figure 1](figures/fig1.png)
 """
 
-    @patch('app.services.gemini_translator.genai')
-    def test_init(self, mock_genai, api_key):
+    @patch('app.services.gemini_translator.genai.Client')
+    def test_init(self, mock_client_class, api_key):
         """初期化テスト"""
         GeminiTranslator(api_key)
 
-        mock_genai.configure.assert_called_once_with(api_key=api_key)
-        mock_genai.GenerativeModel.assert_called_once_with('gemini-2.0-flash-exp')
+        mock_client_class.assert_called_once_with(api_key=api_key)
 
-    @patch('app.services.gemini_translator.genai')
+    @patch('app.services.gemini_translator.genai.Client')
     async def test_translate_success(
         self,
-        mock_genai,
+        mock_client_class,
         api_key,
         source_text,
         translated_text
     ):
         """translate - 成功ケース"""
-        # モックモデルの設定
-        mock_model = MagicMock()
+        # モッククライアントとレスポンスの設定
+        mock_client = MagicMock()
+        mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = translated_text
-        mock_model.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_genai.GenerativeModel.return_value = mock_model
+
+        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
+        mock_client.models = mock_models
+        mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
         result = await translator.translate(source_text, target_language="en")
@@ -79,21 +81,23 @@ Please refer to Figure 1.
         assert "![Figure 1](figures/fig1.png)" in result
 
         # API呼び出しの検証
-        mock_model.generate_content_async.assert_called_once()
+        mock_models.generate_content_async.assert_called_once()
 
-    @patch('app.services.gemini_translator.genai')
+    @patch('app.services.gemini_translator.genai.Client')
     async def test_translate_multiple_languages(
         self,
-        mock_genai,
+        mock_client_class,
         api_key,
         source_text
     ):
         """translate - 複数言語対応"""
-        mock_model = MagicMock()
+        mock_client = MagicMock()
+        mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = "Translated text"
-        mock_model.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_genai.GenerativeModel.return_value = mock_model
+        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
+        mock_client.models = mock_models
+        mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
 
@@ -103,20 +107,22 @@ Please refer to Figure 1.
             result = await translator.translate(source_text, target_language=lang)
             assert result == "Translated text"
 
-    @patch('app.services.gemini_translator.genai')
+    @patch('app.services.gemini_translator.genai.Client')
     async def test_translate_with_context(
         self,
-        mock_genai,
+        mock_client_class,
         api_key,
         source_text,
         translated_text
     ):
         """translate - コンテキスト付き翻訳"""
-        mock_model = MagicMock()
+        mock_client = MagicMock()
+        mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = translated_text
-        mock_model.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_genai.GenerativeModel.return_value = mock_model
+        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
+        mock_client.models = mock_models
+        mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
         context = {"subject": "science", "grade": "middle_school"}
@@ -129,38 +135,42 @@ Please refer to Figure 1.
 
         assert "Chapter 1" in result
 
-    @patch('app.services.gemini_translator.genai')
+    @patch('app.services.gemini_translator.genai.Client')
     async def test_translate_api_error(
         self,
-        mock_genai,
+        mock_client_class,
         api_key,
         source_text
     ):
         """translate - API呼び出しエラー"""
-        # モックモデルがエラーを返すように設定
-        mock_model = MagicMock()
-        mock_model.generate_content_async = AsyncMock(
+        # モッククライアントがエラーを返すように設定
+        mock_client = MagicMock()
+        mock_models = MagicMock()
+        mock_models.generate_content_async = AsyncMock(
             side_effect=Exception("API connection error")
         )
-        mock_genai.GenerativeModel.return_value = mock_model
+        mock_client.models = mock_models
+        mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
 
         with pytest.raises(Exception, match="Gemini translation failed"):
             await translator.translate(source_text, target_language="en")
 
-    @patch('app.services.gemini_translator.genai')
+    @patch('app.services.gemini_translator.genai.Client')
     async def test_translate_empty_text(
         self,
-        mock_genai,
+        mock_client_class,
         api_key
     ):
         """translate - 空のテキスト"""
-        mock_model = MagicMock()
+        mock_client = MagicMock()
+        mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = ""
-        mock_model.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_genai.GenerativeModel.return_value = mock_model
+        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
+        mock_client.models = mock_models
+        mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
         result = await translator.translate("", target_language="en")
@@ -186,10 +196,10 @@ Please refer to Figure 1.
         for lang_code, lang_name in expected_mappings.items():
             assert translator.LANGUAGE_NAMES[lang_code] == lang_name
 
-    @patch('app.services.gemini_translator.genai')
+    @patch('app.services.gemini_translator.genai.Client')
     async def test_translate_preserves_markdown_structure(
         self,
-        mock_genai,
+        mock_client_class,
         api_key
     ):
         """translate - Markdown構造の保持"""
@@ -208,11 +218,13 @@ Please refer to Figure 1.
 **Bold** and *italic* test.
 """
 
-        mock_model = MagicMock()
+        mock_client = MagicMock()
+        mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = translated
-        mock_model.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_genai.GenerativeModel.return_value = mock_model
+        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
+        mock_client.models = mock_models
+        mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
         result = await translator.translate(source, target_language="en")

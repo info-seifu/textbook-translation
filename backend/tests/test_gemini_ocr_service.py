@@ -54,30 +54,32 @@ class TestGeminiOCRService:
 }"""
         return f"```json\n{json_response}\n```"
 
-    @patch('app.services.gemini_ocr_service.genai')
-    def test_init(self, mock_genai, api_key):
+    @patch('app.services.gemini_ocr_service.genai.Client')
+    def test_init(self, mock_client_class, api_key):
         """初期化テスト"""
         GeminiOCRService(api_key)
 
-        mock_genai.configure.assert_called_once_with(api_key=api_key)
-        mock_genai.GenerativeModel.assert_called_once_with('gemini-2.0-flash-exp')
+        mock_client_class.assert_called_once_with(api_key=api_key)
 
     @pytest.mark.asyncio
-    @patch('app.services.gemini_ocr_service.genai')
+    @patch('app.services.gemini_ocr_service.genai.Client')
     async def test_extract_page_success(
         self,
-        mock_genai,
+        mock_client_class,
         api_key,
         sample_image_bytes,
         mock_gemini_response
     ):
         """extract_page - 成功ケース"""
-        # モックモデルの設定
-        mock_model = MagicMock()
+        # モッククライアントとレスポンスの設定
+        mock_client = MagicMock()
+        mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = mock_gemini_response
-        mock_model.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_genai.GenerativeModel.return_value = mock_model
+
+        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
+        mock_client.models = mock_models
+        mock_client_class.return_value = mock_client
 
         service = GeminiOCRService(api_key)
         result = await service.extract_page(sample_image_bytes, page_number=1)
@@ -92,20 +94,22 @@ class TestGeminiOCRService:
         assert result.layout_info.primary_direction == "horizontal"
 
     @pytest.mark.asyncio
-    @patch('app.services.gemini_ocr_service.genai')
+    @patch('app.services.gemini_ocr_service.genai.Client')
     async def test_extract_page_api_error(
         self,
-        mock_genai,
+        mock_client_class,
         api_key,
         sample_image_bytes
     ):
         """extract_page - API呼び出しエラー"""
-        # モックモデルがエラーを返すように設定
-        mock_model = MagicMock()
-        mock_model.generate_content_async = AsyncMock(
+        # モッククライアントがエラーを返すように設定
+        mock_client = MagicMock()
+        mock_models = MagicMock()
+        mock_models.generate_content_async = AsyncMock(
             side_effect=Exception("API connection error")
         )
-        mock_genai.GenerativeModel.return_value = mock_model
+        mock_client.models = mock_models
+        mock_client_class.return_value = mock_client
 
         service = GeminiOCRService(api_key)
 
