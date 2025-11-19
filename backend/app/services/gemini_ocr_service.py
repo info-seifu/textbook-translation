@@ -8,6 +8,7 @@ import json
 import re
 from pathlib import Path
 import logging
+import base64
 
 from app.models.schemas import OCRResult, FigureData, LayoutInfo, FigurePosition
 from app.utils.retry import async_retry
@@ -53,16 +54,24 @@ class GeminiOCRService:
         try:
             logger.info(f"Starting PDF OCR with {self.model}")
 
-            # PDFファイルをアップロード
-            pdf_file = await self.client.aio.files.upload(path=pdf_path)
-            logger.info(f"PDF uploaded: {pdf_file.name}")
+            # PDFファイルを読み込み
+            with open(pdf_path, 'rb') as f:
+                pdf_bytes = f.read()
 
-            # Gemini API call for OCR
+            # Base64エンコード
+            pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+
+            # Gemini API call for OCR (PDF直接送信)
             response = await self.client.aio.models.generate_content(
                 model=self.model,
                 contents=[
                     types.Part(text=prompt),
-                    pdf_file
+                    types.Part(
+                        inline_data=types.Blob(
+                            mime_type="application/pdf",
+                            data=pdf_b64
+                        )
+                    )
                 ],
                 config=types.GenerateContentConfig(
                     temperature=1.0  # Gemini 3推奨値
@@ -72,13 +81,6 @@ class GeminiOCRService:
             # 結果パース
             results = self._parse_multi_page_response(response.text)
             logger.info(f"OCR completed for {len(results)} pages")
-
-            # アップロードしたファイルを削除
-            try:
-                await self.client.aio.files.delete(name=pdf_file.name)
-                logger.info(f"Temporary PDF file deleted: {pdf_file.name}")
-            except Exception as e:
-                logger.warning(f"Failed to delete temporary file: {e}")
 
             return results
 
