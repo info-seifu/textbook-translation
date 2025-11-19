@@ -28,7 +28,7 @@ class GeminiTranslator(TranslatorBase):
     }
 
     def __init__(self, api_key: str):
-        # Gemini SDK使用
+        # Gemini SDK使用 (OCRサービスと同じ初期化方法)
         self.client = genai.Client(api_key=api_key)
         self.model = settings.gemini_translate_model
 
