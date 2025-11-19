@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Required API Keys
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+
+      # Supabase (Optional for production, not needed for local)
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY:-}
+
+      # Backend Settings
+      - BACKEND_PORT=8000
+      - BACKEND_HOST=0.0.0.0
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+
+      # Gemini Settings
+      - USE_GEMINI_3=${USE_GEMINI_3:-false}
+
+      # File Upload Settings
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-50}
+      - UPLOAD_DIR=uploads
+    volumes:
+      # Persistent storage for uploads and local database
+      - ./backend/uploads:/app/uploads
+      - ./backend/storage:/app/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  uploads:
+  storage:
