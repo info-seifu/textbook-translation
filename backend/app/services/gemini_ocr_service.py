@@ -1,27 +1,35 @@
 """
 Gemini OCRサービス
 """
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from typing import List
 import json
 import re
 from PIL import Image
 import io
 import logging
+import base64
 
 from app.models.schemas import OCRResult, FigureData, LayoutInfo, FigurePosition
 from app.utils.retry import async_retry
 from app.exceptions import OCRException, APIRateLimitException
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class GeminiOCRService:
-    """Gemini 2.5 ProによるOCRサービス"""
+    """Gemini 3.0 ProによるOCRサービス"""
 
     def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        # Gemini 3.0 Pro用に新しいSDKを使用
+        # media_resolution用にv1alpha APIバージョンを指定
+        self.client = genai.Client(
+            api_key=api_key,
+            http_options={'api_version': 'v1alpha'}
+        )
+        self.model = settings.GEMINI_OCR_MODEL
 
     @async_retry(
         max_retries=3,
@@ -51,15 +59,39 @@ class GeminiOCRService:
 
         # Gemini API呼び出し
         try:
-            logger.info(f"Starting OCR for page {page_number}")
+            logger.info(f"Starting OCR for page {page_number} with Gemini 3.0 Pro")
 
-            # 画像を PIL Image として準備
-            image = Image.open(io.BytesIO(image_bytes))
+            # 画像をbase64エンコード
+            image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
-            response = await self.model.generate_content_async([
-                prompt,
-                image
-            ])
+            # Gemini 3.0 Pro with high thinking level and high media resolution
+            response = await self.client.models.generate_content_async(
+                model=self.model,
+                contents=[
+                    types.Content(
+                        role='user',
+                        parts=[
+                            types.Part(text=prompt),
+                            types.Part(
+                                inline_data=types.Blob(
+                                    mime_type="image/png",
+                                    data=image_b64
+                                ),
+                                media_resolution=types.MediaResolution(
+                                    level=settings.GEMINI_OCR_MEDIA_RESOLUTION
+                                )
+                            )
+                        ]
+                    )
+                ],
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(
+                        thinking_level=settings.GEMINI_OCR_THINKING_LEVEL,
+                        include_thoughts=False  # トークン節約
+                    ),
+                    temperature=1.0  # Gemini 3推奨値
+                )
+            )
 
             # 結果パース
             result = self._parse_response(response.text, page_number)

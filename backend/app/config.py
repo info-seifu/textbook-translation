@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 50
     UPLOAD_DIR: str = "uploads"
 
+    # Gemini 3.0 Pro Settings
+    GEMINI_OCR_MODEL: str = "gemini-3-pro-preview-11-2025"
+    GEMINI_OCR_THINKING_LEVEL: str = "high"
+    GEMINI_OCR_MEDIA_RESOLUTION: str = "media_resolution_high"
+
+    GEMINI_TRANSLATE_MODEL: str = "gemini-3-pro-preview-11-2025"
+    GEMINI_TRANSLATE_THINKING_LEVEL: str = "low"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

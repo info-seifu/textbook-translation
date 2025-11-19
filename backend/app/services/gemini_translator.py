@@ -1,18 +1,20 @@
 """
 Gemini翻訳サービス
 """
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from typing import Optional
 from app.services.translator_base import TranslatorBase
 from app.utils.retry import async_retry
 from app.exceptions import APIRateLimitException
+from app.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 class GeminiTranslator(TranslatorBase):
-    """Gemini 2.5 Flashによる翻訳"""
+    """Gemini 3.0 Proによる翻訳"""
 
     LANGUAGE_NAMES = {
         'en': 'English',
@@ -26,8 +28,9 @@ class GeminiTranslator(TranslatorBase):
     }
 
     def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        # Gemini 3.0 Pro用に新しいSDKを使用
+        self.client = genai.Client(api_key=api_key)
+        self.model = settings.GEMINI_TRANSLATE_MODEL
 
     @async_retry(
         max_retries=3,
@@ -42,11 +45,11 @@ class GeminiTranslator(TranslatorBase):
         target_language: str,
         context: Optional[dict] = None
     ) -> str:
-        """Gemini Flashで翻訳（リトライ機能付き）"""
+        """Gemini 3.0 Proで翻訳（リトライ機能付き）"""
 
         target_lang_name = self.LANGUAGE_NAMES.get(target_language, target_language)
 
-        logger.info(f"Starting translation to {target_language} using Gemini Flash")
+        logger.info(f"Starting translation to {target_language} using Gemini 3.0 Pro")
 
         prompt = f"""
 You are an expert translator specializing in educational materials.
@@ -84,7 +87,19 @@ Provide ONLY the translated markdown in {target_lang_name}. No explanations or c
 """
 
         try:
-            response = await self.model.generate_content_async(prompt)
+            # Gemini 3.0 Pro with low thinking level (コスト最適化)
+            response = await self.client.models.generate_content_async(
+                model=self.model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(
+                        thinking_level=settings.GEMINI_TRANSLATE_THINKING_LEVEL,
+                        include_thoughts=False  # トークン節約
+                    ),
+                    temperature=0.3  # 翻訳には低めのtemperatureが適切
+                )
+            )
+
             translated_text = response.text
             logger.info(f"Translation completed successfully. Output length: {len(translated_text)} chars")
             return translated_text
