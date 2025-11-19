@@ -64,7 +64,7 @@ class GeminiOCRService:
             # 画像をbase64エンコード
             image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
-            # Gemini 3.0 Pro with high thinking level and high media resolution
+            # Gemini 3.0 Pro with dynamic thinking budget and high media resolution
             response = await self.client.models.generate_content_async(
                 model=self.model,
                 contents=[
@@ -77,16 +77,14 @@ class GeminiOCRService:
                                     mime_type="image/png",
                                     data=image_b64
                                 ),
-                                media_resolution=types.MediaResolution(
-                                    level=settings.GEMINI_OCR_MEDIA_RESOLUTION
-                                )
+                                media_resolution=types.MediaResolution.MEDIA_RESOLUTION_HIGH
                             )
                         ]
                     )
                 ],
                 config=types.GenerateContentConfig(
                     thinking_config=types.ThinkingConfig(
-                        thinking_level=settings.GEMINI_OCR_THINKING_LEVEL,
+                        thinking_budget=settings.GEMINI_OCR_THINKING_BUDGET,
                         include_thoughts=False  # トークン節約
                     ),
                     temperature=1.0  # Gemini 3推奨値

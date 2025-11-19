@@ -30,11 +30,10 @@ class Settings(BaseSettings):
 
     # Gemini 3.0 Pro Settings
     GEMINI_OCR_MODEL: str = "gemini-3-pro-preview-11-2025"
-    GEMINI_OCR_THINKING_LEVEL: str = "high"
-    GEMINI_OCR_MEDIA_RESOLUTION: str = "media_resolution_high"
+    GEMINI_OCR_THINKING_BUDGET: int = -1  # -1 = dynamic (最高レベルの推論)
 
     GEMINI_TRANSLATE_MODEL: str = "gemini-3-pro-preview-11-2025"
-    GEMINI_TRANSLATE_THINKING_LEVEL: str = "low"
+    GEMINI_TRANSLATE_THINKING_BUDGET: int = 1024  # 1024 = 中程度（コスト最適化）
 
     class Config:
         env_file = ".env"
