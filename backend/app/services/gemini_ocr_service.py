@@ -24,11 +24,7 @@ class GeminiOCRService:
 
     def __init__(self, api_key: str):
         # Gemini 3.0 Pro用に新しいSDKを使用
-        # media_resolution用にv1alpha APIバージョンを指定
-        self.client = genai.Client(
-            api_key=api_key,
-            http_options={'api_version': 'v1alpha'}
-        )
+        self.client = genai.Client(api_key=api_key)
         self.model = settings.GEMINI_OCR_MODEL
 
     @async_retry(
@@ -64,7 +60,8 @@ class GeminiOCRService:
             # 画像をbase64エンコード
             image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
-            # Gemini 3.0 Pro with dynamic thinking budget and high media resolution
+            # Gemini 3.0 Pro for best OCR quality
+            # Note: SDK v1.2.0 does not support thinking_budget/thinking_level in ThinkingConfig
             response = await self.client.models.generate_content_async(
                 model=self.model,
                 contents=[
@@ -76,17 +73,12 @@ class GeminiOCRService:
                                 inline_data=types.Blob(
                                     mime_type="image/png",
                                     data=image_b64
-                                ),
-                                media_resolution=types.MediaResolution.MEDIA_RESOLUTION_HIGH
+                                )
                             )
                         ]
                     )
                 ],
                 config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(
-                        thinking_budget=settings.GEMINI_OCR_THINKING_BUDGET,
-                        include_thoughts=False  # トークン節約
-                    ),
                     temperature=1.0  # Gemini 3推奨値
                 )
             )

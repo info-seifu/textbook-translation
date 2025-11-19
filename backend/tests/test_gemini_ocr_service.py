@@ -59,10 +59,7 @@ class TestGeminiOCRService:
         """初期化テスト"""
         GeminiOCRService(api_key)
 
-        mock_client_class.assert_called_once_with(
-            api_key=api_key,
-            http_options={'api_version': 'v1alpha'}
-        )
+        mock_client_class.assert_called_once_with(api_key=api_key)
 
     @pytest.mark.asyncio
     @patch('app.services.gemini_ocr_service.genai.Client')

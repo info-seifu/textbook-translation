@@ -87,15 +87,12 @@ Provide ONLY the translated markdown in {target_lang_name}. No explanations or c
 """
 
         try:
-            # Gemini 3.0 Pro with medium thinking budget (コスト最適化)
+            # Gemini 3.0 Pro for translation
+            # Note: SDK v1.2.0 does not support thinking_budget/thinking_level in ThinkingConfig
             response = await self.client.models.generate_content_async(
                 model=self.model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(
-                        thinking_budget=settings.GEMINI_TRANSLATE_THINKING_BUDGET,
-                        include_thoughts=False  # トークン節約
-                    ),
                     temperature=0.3  # 翻訳には低めのtemperatureが適切
                 )
             )
