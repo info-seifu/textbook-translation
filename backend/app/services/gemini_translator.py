@@ -87,9 +87,8 @@ Provide ONLY the translated markdown in {target_lang_name}. No explanations or c
 """
 
         try:
-            # Gemini API for translation
-            # Note: SDK v1.2.0 does not support thinking_budget/thinking_level in ThinkingConfig
-            response = await self.client.models.generate_content_async(
+            # Gemini API for translation (google-genai v1.51.0)
+            response = await self.client.aio.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
