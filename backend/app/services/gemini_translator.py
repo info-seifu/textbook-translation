@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiTranslator(TranslatorBase):
-    """Gemini 3.0 Proによる翻訳"""
+    """Gemini翻訳サービス (2.5/3.0切り替え対応)"""
 
     LANGUAGE_NAMES = {
         'en': 'English',
@@ -28,9 +28,9 @@ class GeminiTranslator(TranslatorBase):
     }
 
     def __init__(self, api_key: str):
-        # Gemini 3.0 Pro用に新しいSDKを使用
+        # Gemini SDK使用
         self.client = genai.Client(api_key=api_key)
-        self.model = settings.GEMINI_TRANSLATE_MODEL
+        self.model = settings.gemini_translate_model
 
     @async_retry(
         max_retries=3,
@@ -45,11 +45,11 @@ class GeminiTranslator(TranslatorBase):
         target_language: str,
         context: Optional[dict] = None
     ) -> str:
-        """Gemini 3.0 Proで翻訳（リトライ機能付き）"""
+        """Geminiで翻訳（リトライ機能付き）"""
 
         target_lang_name = self.LANGUAGE_NAMES.get(target_language, target_language)
 
-        logger.info(f"Starting translation to {target_language} using Gemini 3.0 Pro")
+        logger.info(f"Starting translation to {target_language} using {self.model}")
 
         prompt = f"""
 You are an expert translator specializing in educational materials.
@@ -87,7 +87,7 @@ Provide ONLY the translated markdown in {target_lang_name}. No explanations or c
 """
 
         try:
-            # Gemini 3.0 Pro for translation
+            # Gemini API for translation
             # Note: SDK v1.2.0 does not support thinking_budget/thinking_level in ThinkingConfig
             response = await self.client.models.generate_content_async(
                 model=self.model,

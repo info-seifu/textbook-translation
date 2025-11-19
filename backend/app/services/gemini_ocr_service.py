@@ -20,12 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiOCRService:
-    """Gemini 3.0 ProによるOCRサービス"""
+    """Gemini OCRサービス (2.5/3.0切り替え対応)"""
 
     def __init__(self, api_key: str):
-        # Gemini 3.0 Pro用に新しいSDKを使用
+        # Gemini SDK使用
         self.client = genai.Client(api_key=api_key)
-        self.model = settings.GEMINI_OCR_MODEL
+        self.model = settings.gemini_ocr_model
 
     @async_retry(
         max_retries=3,
@@ -55,12 +55,12 @@ class GeminiOCRService:
 
         # Gemini API呼び出し
         try:
-            logger.info(f"Starting OCR for page {page_number} with Gemini 3.0 Pro")
+            logger.info(f"Starting OCR for page {page_number} with {self.model}")
 
             # 画像をbase64エンコード
             image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
-            # Gemini 3.0 Pro for best OCR quality
+            # Gemini API call for OCR
             # Note: SDK v1.2.0 does not support thinking_budget/thinking_level in ThinkingConfig
             response = await self.client.models.generate_content_async(
                 model=self.model,

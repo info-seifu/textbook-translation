@@ -28,12 +28,27 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 50
     UPLOAD_DIR: str = "uploads"
 
-    # Gemini 3.0 Pro Settings
-    # OCR: HIGH thinking level for best quality image analysis
-    GEMINI_OCR_MODEL: str = "gemini-3-pro-preview-11-2025"
+    # Gemini Settings
+    # USE_GEMINI_3: true = Gemini 3.0 Pro (requires billing), false = Gemini 2.5 (free tier)
+    USE_GEMINI_3: bool = False
 
-    # Translation: LOW thinking level for cost optimization
-    GEMINI_TRANSLATE_MODEL: str = "gemini-3-pro-preview-11-2025"
+    # Gemini 2.5 Models (Free tier)
+    GEMINI_2_5_OCR_MODEL: str = "gemini-2.5-pro"
+    GEMINI_2_5_TRANSLATE_MODEL: str = "gemini-2.5-flash"
+
+    # Gemini 3.0 Models (Requires billing account)
+    GEMINI_3_OCR_MODEL: str = "gemini-3-pro-preview"
+    GEMINI_3_TRANSLATE_MODEL: str = "gemini-3-pro-preview"
+
+    @property
+    def gemini_ocr_model(self) -> str:
+        """OCR用モデル名（USE_GEMINI_3により切り替え）"""
+        return self.GEMINI_3_OCR_MODEL if self.USE_GEMINI_3 else self.GEMINI_2_5_OCR_MODEL
+
+    @property
+    def gemini_translate_model(self) -> str:
+        """翻訳用モデル名（USE_GEMINI_3により切り替え）"""
+        return self.GEMINI_3_TRANSLATE_MODEL if self.USE_GEMINI_3 else self.GEMINI_2_5_TRANSLATE_MODEL
 
     class Config:
         env_file = ".env"
