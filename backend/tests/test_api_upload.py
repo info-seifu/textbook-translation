@@ -12,7 +12,9 @@ from app.main import app
 @pytest.fixture
 def client():
     """FastAPI TestClient"""
-    return TestClient(app)
+    # Starlette 0.37+ compatibility: use context manager
+    with TestClient(app) as c:
+        yield c
 
 
 @pytest.fixture
