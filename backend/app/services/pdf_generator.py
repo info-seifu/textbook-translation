@@ -96,5 +96,35 @@ class PDFGenerator:
             job_id
         )
 
+        # PDF生成用に画像URLをファイルパスに変換または削除
+        if job_id:
+            import re
+            from pathlib import Path
+
+            # storage/documents/{job_id}/figures/ の構造
+            # 絶対パスに変換
+            storage_dir = Path("storage").resolve() / "documents" / job_id / "figures"
+
+            # /api/figures/{job_id}/... を file:// URLに変換、存在しない場合は削除
+            def replace_img_url(match):
+                full_tag = match.group(0)
+                src_match = re.search(r'src="(/api/figures/[^"]+)"', full_tag)
+                if src_match:
+                    api_url = src_match.group(1)
+                    # /api/figures/{job_id}/figures/page1_fig1.png → page1_fig1.png
+                    filename = api_url.split('/')[-1]
+                    file_path = storage_dir / filename
+                    if file_path.exists():
+                        # file:// URLに変換（絶対パス）
+                        file_url = file_path.as_uri()
+                        return full_tag.replace(api_url, file_url)
+                    else:
+                        # 画像ファイルが存在しない場合は、imgタグを削除
+                        return ''
+                # 相対パスも削除
+                return ''
+
+            html_content = re.sub(r'<img[^>]+>', replace_img_url, html_content)
+
         # HTMLからPDFを生成
         return self.generate_pdf(html_content)

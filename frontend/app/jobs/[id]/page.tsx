@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getJobStatus, startTranslation, downloadMarkdown } from '@/lib/api'
+import { getJobStatus, startTranslation, downloadMarkdown, downloadHTML, downloadPDF } from '@/lib/api'
 
 interface Job {
   id: string
@@ -58,20 +58,22 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
 
     // 定期的にステータスを更新
     const interval = setInterval(() => {
-      if (job?.ocr_status === 'processing' || translations.some(t => t.status === 'processing')) {
-        loadJobStatus()
-      }
+      loadJobStatus()
     }, 3000) // 3秒ごと
 
     return () => clearInterval(interval)
-  }, [params.id, job?.ocr_status])
+  }, [params.id])
 
   const handleStartTranslation = async () => {
     setStartingTranslation(true)
     setError('')
 
     try {
-      await startTranslation(params.id, targetLanguage, translatorEngine)
+      await startTranslation({
+        job_id: params.id,
+        target_language: targetLanguage,
+        translator_engine: translatorEngine
+      })
       // ステータスを再読み込み
       await loadJobStatus()
     } catch (err: any) {
@@ -82,7 +84,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
     }
   }
 
-  const handleDownload = async (outputId: string, language: string) => {
+  const handleDownloadMarkdown = async (outputId: string, language: string) => {
     try {
       const blob = await downloadMarkdown(outputId)
       const url = window.URL.createObjectURL(blob)
@@ -92,8 +94,38 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
       a.click()
       window.URL.revokeObjectURL(url)
     } catch (err) {
-      console.error('Download failed:', err)
-      alert('ダウンロードに失敗しました')
+      console.error('Markdown download failed:', err)
+      alert('Markdownのダウンロードに失敗しました')
+    }
+  }
+
+  const handleDownloadHTML = async (outputId: string, language: string) => {
+    try {
+      const blob = await downloadHTML(outputId)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `translated_${language}.html`
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('HTML download failed:', err)
+      alert('HTMLのダウンロードに失敗しました')
+    }
+  }
+
+  const handleDownloadPDF = async (outputId: string, language: string) => {
+    try {
+      const blob = await downloadPDF(outputId)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `translated_${language}.pdf`
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('PDF download failed:', err)
+      alert('PDFのダウンロードに失敗しました')
     }
   }
 
@@ -264,12 +296,26 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                     )}
 
                     {translation.status === 'completed' && (
-                      <button
-                        onClick={() => handleDownload(translation.id, translation.target_language)}
-                        className="mt-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                      >
-                        ダウンロード
-                      </button>
+                      <div className="mt-3 flex gap-3">
+                        <button
+                          onClick={() => handleDownloadMarkdown(translation.id, translation.target_language)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                        >
+                          Markdown
+                        </button>
+                        <button
+                          onClick={() => handleDownloadHTML(translation.id, translation.target_language)}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                        >
+                          HTML
+                        </button>
+                        <button
+                          onClick={() => handleDownloadPDF(translation.id, translation.target_language)}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                        >
+                          PDF
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}

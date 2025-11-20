@@ -28,7 +28,7 @@ class GeminiTranslator(TranslatorBase):
     }
 
     def __init__(self, api_key: str):
-        # Gemini SDK使用
+        # Gemini SDK使用 (OCRサービスと同じ初期化方法)
         self.client = genai.Client(api_key=api_key)
         self.model = settings.gemini_translate_model
 
@@ -87,9 +87,8 @@ Provide ONLY the translated markdown in {target_lang_name}. No explanations or c
 """
 
         try:
-            # Gemini API for translation
-            # Note: SDK v1.2.0 does not support thinking_budget/thinking_level in ThinkingConfig
-            response = await self.client.models.generate_content_async(
+            # Gemini API for translation (google-genai v1.51.0)
+            response = await self.client.aio.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config=types.GenerateContentConfig(

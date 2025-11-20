@@ -50,36 +50,17 @@ class TableQuery:
         self.filters = []
         self.select_fields = None
         self.single_result = False
+        self.insert_data = None
 
     def select(self, fields: str = '*'):
         """SELECT句"""
         self.select_fields = fields
         return self
 
-    def insert(self, data: Dict) -> 'QueryResponse':
-        """INSERT"""
-        with self.db.lock:
-            db_data = self.db._load_db()
-
-            if self.table_name not in db_data:
-                db_data[self.table_name] = []
-
-            # IDがなければ生成
-            if 'id' not in data:
-                data['id'] = str(uuid4())
-
-            # created_atがなければ追加
-            if 'created_at' not in data:
-                data['created_at'] = datetime.now().isoformat()
-
-            # updated_atを追加（translation_jobsの場合）
-            if self.table_name == 'translation_jobs' and 'updated_at' not in data:
-                data['updated_at'] = datetime.now().isoformat()
-
-            db_data[self.table_name].append(data)
-            self.db._save_db(db_data)
-
-            return QueryResponse(data=[data])
+    def insert(self, data: Dict) -> 'TableQuery':
+        """INSERT句"""
+        self.insert_data = data
+        return self
 
     def update(self, data: Dict) -> 'TableQuery':
         """UPDATE句"""
@@ -106,6 +87,28 @@ class TableQuery:
         with self.db.lock:
             db_data = self.db._load_db()
 
+            # INSERT処理
+            if self.insert_data is not None:
+                if self.table_name not in db_data:
+                    db_data[self.table_name] = []
+
+                # IDがなければ生成
+                if 'id' not in self.insert_data:
+                    self.insert_data['id'] = str(uuid4())
+
+                # created_atがなければ追加
+                if 'created_at' not in self.insert_data:
+                    self.insert_data['created_at'] = datetime.now().isoformat()
+
+                # updated_atを追加（translation_jobsの場合）
+                if self.table_name == 'translation_jobs' and 'updated_at' not in self.insert_data:
+                    self.insert_data['updated_at'] = datetime.now().isoformat()
+
+                db_data[self.table_name].append(self.insert_data)
+                self.db._save_db(db_data)
+
+                return QueryResponse(data=[self.insert_data])
+
             if self.table_name not in db_data:
                 return QueryResponse(data=None if self.single_result else [])
 
@@ -117,7 +120,7 @@ class TableQuery:
                     records = [r for r in records if r.get(field) == value]
 
             # UPDATE処理
-            if hasattr(self, 'update_data'):
+            if hasattr(self, 'update_data') and self.update_data is not None:
                 updated_records = []
                 for record in records:
                     record.update(self.update_data)

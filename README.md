@@ -86,9 +86,14 @@ textbook-translation/
 
 ## 🚀 セットアップ
 
+### 📚 セットアップガイド
+
+- **🐳 Docker Quickstart**: [docs/docker_quickstart.md](docs/docker_quickstart.md) - Docker Composeで即座に起動
+- **🌐 本番環境デプロイ**: [docs/production_deployment.md](docs/production_deployment.md) - Cloud Run / Vercel / Supabase
+
 ### 必須環境
 
-- Python 3.10以上
+- Python 3.10以上 または Docker
 - Google Gemini APIキー
 - Anthropic Claude APIキー
 
@@ -127,7 +132,24 @@ SUPABASE_SERVICE_KEY=your_supabase_service_key
 
 ### クイックスタート
 
-#### 方法1: スタンドアロン起動（推奨）
+#### 方法0: Docker Compose起動（最も簡単）
+
+```bash
+# .envファイルを作成
+cp .env.example .env
+# エディタでAPIキーを設定
+
+# Docker Composeで起動
+docker-compose up -d
+
+# アクセス
+# Frontend: http://localhost:3000
+# Backend: http://localhost:8000
+```
+
+詳細は [Docker Quickstart Guide](docs/docker_quickstart.md) を参照
+
+#### 方法1: スタンドアロン起動（Python環境）
 
 ```bash
 cd backend
@@ -214,10 +236,18 @@ Next.jsフロントエンド: http://localhost:3000
 - [x] HTML/PDF生成機能
 - [x] テストコード整備
 
-### 🔄 Phase 4: 追加機能（進行中）
-- [ ] Next.jsフロントエンド完成
-- [ ] 本番環境デプロイ（Vercel + Supabase）
-- [ ] ドキュメント整備
+### ✅ Phase 4: デプロイ対応（完了）
+- [x] Next.jsフロントエンド完成
+- [x] Docker Compose設定
+- [x] Dockerfile作成（Backend/Frontend）
+- [x] デプロイメントドキュメント整備
+  - [x] Docker Quickstart Guide
+  - [x] Production Deployment Guide
+
+### 🔄 Phase 5: 追加機能（今後の予定）
+- [ ] ユーザー認証機能
+- [ ] 翻訳履歴管理UI
+- [ ] バッチ処理UI改善
 
 ## 🤝 コントリビューション
 

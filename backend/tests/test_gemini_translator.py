@@ -63,12 +63,14 @@ Please refer to Figure 1.
         """translate - 成功ケース"""
         # モッククライアントとレスポンスの設定
         mock_client = MagicMock()
+        mock_aio = MagicMock()
         mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = translated_text
 
-        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_client.models = mock_models
+        mock_models.generate_content = AsyncMock(return_value=mock_response)
+        mock_aio.models = mock_models
+        mock_client.aio = mock_aio
         mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
@@ -81,7 +83,7 @@ Please refer to Figure 1.
         assert "![Figure 1](figures/fig1.png)" in result
 
         # API呼び出しの検証
-        mock_models.generate_content_async.assert_called_once()
+        mock_models.generate_content.assert_called_once()
 
     @patch('app.services.gemini_translator.genai.Client')
     async def test_translate_multiple_languages(
@@ -92,11 +94,13 @@ Please refer to Figure 1.
     ):
         """translate - 複数言語対応"""
         mock_client = MagicMock()
+        mock_aio = MagicMock()
         mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = "Translated text"
-        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_client.models = mock_models
+        mock_models.generate_content = AsyncMock(return_value=mock_response)
+        mock_aio.models = mock_models
+        mock_client.aio = mock_aio
         mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
@@ -117,11 +121,13 @@ Please refer to Figure 1.
     ):
         """translate - コンテキスト付き翻訳"""
         mock_client = MagicMock()
+        mock_aio = MagicMock()
         mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = translated_text
-        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_client.models = mock_models
+        mock_models.generate_content = AsyncMock(return_value=mock_response)
+        mock_aio.models = mock_models
+        mock_client.aio = mock_aio
         mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
@@ -145,11 +151,13 @@ Please refer to Figure 1.
         """translate - API呼び出しエラー"""
         # モッククライアントがエラーを返すように設定
         mock_client = MagicMock()
+        mock_aio = MagicMock()
         mock_models = MagicMock()
-        mock_models.generate_content_async = AsyncMock(
+        mock_models.generate_content = AsyncMock(
             side_effect=Exception("API connection error")
         )
-        mock_client.models = mock_models
+        mock_aio.models = mock_models
+        mock_client.aio = mock_aio
         mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
@@ -165,11 +173,13 @@ Please refer to Figure 1.
     ):
         """translate - 空のテキスト"""
         mock_client = MagicMock()
+        mock_aio = MagicMock()
         mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = ""
-        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_client.models = mock_models
+        mock_models.generate_content = AsyncMock(return_value=mock_response)
+        mock_aio.models = mock_models
+        mock_client.aio = mock_aio
         mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)
@@ -219,11 +229,13 @@ Please refer to Figure 1.
 """
 
         mock_client = MagicMock()
+        mock_aio = MagicMock()
         mock_models = MagicMock()
         mock_response = MagicMock()
         mock_response.text = translated
-        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_client.models = mock_models
+        mock_models.generate_content = AsyncMock(return_value=mock_response)
+        mock_aio.models = mock_models
+        mock_client.aio = mock_aio
         mock_client_class.return_value = mock_client
 
         translator = GeminiTranslator(api_key)

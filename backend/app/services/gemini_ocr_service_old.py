@@ -1,12 +1,13 @@
 """
-Gemini OCRサービス (PDF直接送信版)
+Gemini OCRサービス
 """
 from google import genai
 from google.genai import types
 from typing import List
 import json
 import re
-from pathlib import Path
+from PIL import Image
+import io
 import logging
 import base64
 
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiOCRService:
-    """Gemini OCRサービス (PDF直接送信対応)"""
+    """Gemini OCRサービス (2.5/3.0切り替え対応)"""
 
     def __init__(self, api_key: str):
         # Gemini SDK使用
@@ -33,18 +34,20 @@ class GeminiOCRService:
         exceptions=(Exception,),
         rate_limit_exceptions=(APIRateLimitException,)
     )
-    async def extract_from_pdf(
+    async def extract_page(
         self,
-        pdf_path: str
-    ) -> List[OCRResult]:
+        image_bytes: bytes,
+        page_number: int
+    ) -> OCRResult:
         """
-        PDF全体のOCR処理（PDF直接送信）
+        1ページ分のOCR処理
 
         Args:
-            pdf_path: PDFファイルパス
+            image_bytes: ページ画像
+            page_number: ページ番号
 
         Returns:
-            各ページのOCR結果リスト
+            OCR結果（テキスト、図解、レイアウト情報）
         """
 
         # プロンプト構築
@@ -52,25 +55,27 @@ class GeminiOCRService:
 
         # Gemini API呼び出し
         try:
-            logger.info(f"Starting PDF OCR with {self.model}")
+            logger.info(f"Starting OCR for page {page_number} with {self.model}")
 
-            # PDFファイルを読み込み
-            with open(pdf_path, 'rb') as f:
-                pdf_bytes = f.read()
+            # 画像をbase64エンコード
+            image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
-            # Base64エンコード
-            pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-
-            # Gemini API call for OCR (PDF直接送信)
-            response = await self.client.aio.models.generate_content(
+            # Gemini API call for OCR
+            # Note: SDK v1.2.0 does not support thinking_budget/thinking_level in ThinkingConfig
+            response = await self.client.models.generate_content_async(
                 model=self.model,
                 contents=[
-                    types.Part(text=prompt),
-                    types.Part(
-                        inline_data=types.Blob(
-                            mime_type="application/pdf",
-                            data=pdf_b64
-                        )
+                    types.Content(
+                        role='user',
+                        parts=[
+                            types.Part(text=prompt),
+                            types.Part(
+                                inline_data=types.Blob(
+                                    mime_type="image/png",
+                                    data=image_b64
+                                )
+                            )
+                        ]
                     )
                 ],
                 config=types.GenerateContentConfig(
@@ -79,25 +84,24 @@ class GeminiOCRService:
             )
 
             # 結果パース
-            results = self._parse_multi_page_response(response.text)
-            logger.info(f"OCR completed for {len(results)} pages")
-
-            return results
+            result = self._parse_response(response.text, page_number)
+            logger.info(f"OCR completed for page {page_number}")
+            return result
 
         except Exception as e:
             logger.error(
-                f"Gemini PDF OCR failed: {str(e)}"
+                f"Gemini OCR failed for page {page_number}: {str(e)}"
             )
             raise OCRException(
-                f"PDF OCR failed",
-                details={"error": str(e)}
+                f"OCR failed for page {page_number}",
+                details={"page": page_number, "error": str(e)}
             )
 
     def _build_ocr_prompt(self) -> str:
         """OCR用プロンプト生成"""
 
         return """
-あなたは日本語教科書のOCR専門家です。このPDFファイル全体から情報を抽出してください。
+あなたは日本語教科書のOCR専門家です。以下の画像から情報を抽出してください。
 
 # 抽出タスク
 
@@ -128,38 +132,33 @@ class GeminiOCRService:
 
 # 出力フォーマット
 
-PDFの各ページについて、以下のJSON配列形式で出力してください:
+以下のJSON形式で出力してください:
 
 ```json
 {
-  "pages": [
+  "detected_writing_mode": "vertical|horizontal|mixed",
+  "markdown_text": "抽出されたテキスト（Markdown形式）",
+  "figures": [
     {
-      "page_number": 1,
-      "detected_writing_mode": "vertical|horizontal|mixed",
-      "markdown_text": "抽出されたテキスト（Markdown形式）",
-      "figures": [
-        {
-          "id": 1,
-          "position": {"x": 100, "y": 200, "width": 400, "height": 300},
-          "type": "photo|illustration|diagram|table|graph",
-          "description": "図の説明",
-          "extracted_text": "図内のテキスト（キャプション等）"
-        }
-      ],
-      "layout_info": {
-        "primary_direction": "vertical|horizontal",
-        "columns": 1,
-        "has_ruby": true|false,
-        "special_elements": ["囲み記事", "注釈"],
-        "mixed_regions": [
-          {
-            "region": "header",
-            "direction": "horizontal"
-          }
-        ]
-      }
+      "id": 1,
+      "position": {"x": 100, "y": 200, "width": 400, "height": 300},
+      "type": "photo|illustration|diagram|table|graph",
+      "description": "図の説明",
+      "extracted_text": "図内のテキスト（キャプション等）"
     }
-  ]
+  ],
+  "layout_info": {
+    "primary_direction": "vertical|horizontal",
+    "columns": 1,
+    "has_ruby": true|false,
+    "special_elements": ["囲み記事", "注釈"],
+    "mixed_regions": [
+      {
+        "region": "header",
+        "direction": "horizontal"
+      }
+    ]
+  }
 }
 ```
 
@@ -169,11 +168,10 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
 2. **図解の位置精度**: 図解の位置を可能な限り正確に記録すること
 3. **ルビ・特殊記号**: ルビ、縦中横、特殊記号も正確に抽出すること
 4. **レイアウトの忠実性**: 元のレイアウト構造（見出し階層、段落分け等）を維持すること
-5. **全ページ処理**: PDFの全ページを処理し、pages配列に含めること
 """
 
-    def _parse_multi_page_response(self, response_text: str) -> List[OCRResult]:
-        """Gemini応答をパース（複数ページ対応）"""
+    def _parse_response(self, response_text: str, page_number: int) -> OCRResult:
+        """Gemini応答をパース"""
 
         # JSONブロックを抽出
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
@@ -187,20 +185,9 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
         else:
             data = json.loads(json_match.group(1))
 
-        # 各ページをパース
-        results = []
-        for page_data in data.get('pages', []):
-            result = self._parse_page_data(page_data)
-            results.append(result)
-
-        return results
-
-    def _parse_page_data(self, page_data: dict) -> OCRResult:
-        """1ページ分のデータをパース"""
-
         # FigureDataリストの構築
         figures = []
-        for fig_data in page_data.get('figures', []):
+        for fig_data in data.get('figures', []):
             position = FigurePosition(**fig_data['position'])
             figure = FigureData(
                 id=fig_data['id'],
@@ -212,7 +199,7 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
             figures.append(figure)
 
         # LayoutInfoの構築
-        layout_data = page_data.get('layout_info', {})
+        layout_data = data.get('layout_info', {})
         layout_info = LayoutInfo(
             primary_direction=layout_data.get('primary_direction', 'horizontal'),
             columns=layout_data.get('columns', 1),
@@ -222,9 +209,45 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
         )
 
         return OCRResult(
-            page_number=page_data['page_number'],
-            markdown_text=page_data['markdown_text'],
+            page_number=page_number,
+            markdown_text=data['markdown_text'],
             figures=figures,
             layout_info=layout_info,
-            detected_writing_mode=page_data['detected_writing_mode']
+            detected_writing_mode=data['detected_writing_mode']
         )
+
+    async def extract_figures_from_image(
+        self,
+        image_bytes: bytes,
+        figure_positions: List[FigurePosition]
+    ) -> List[bytes]:
+        """
+        図解を画像から切り取り
+
+        Args:
+            image_bytes: ページ全体の画像
+            figure_positions: 図解の位置情報リスト
+
+        Returns:
+            切り取られた図解画像のリスト
+        """
+        # 画像を開く
+        img = Image.open(io.BytesIO(image_bytes))
+
+        cropped_figures = []
+
+        for fig_pos in figure_positions:
+            # 切り取り
+            cropped = img.crop((
+                fig_pos.x,
+                fig_pos.y,
+                fig_pos.x + fig_pos.width,
+                fig_pos.y + fig_pos.height
+            ))
+
+            # バイト列化
+            cropped_bytes = io.BytesIO()
+            cropped.save(cropped_bytes, format='PNG')
+            cropped_figures.append(cropped_bytes.getvalue())
+
+        return cropped_figures
