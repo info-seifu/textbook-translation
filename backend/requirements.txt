@@ -1,5 +1,4 @@
-fastapi==0.109.0
-starlette>=0.37.2
+fastapi>=0.115.0
 uvicorn[standard]==0.27.0
 google-genai>=1.51.0
 anthropic>=0.74.0
