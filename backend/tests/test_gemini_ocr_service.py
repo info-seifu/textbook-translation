@@ -1,13 +1,13 @@
 """
-Gemini OCRサービスのテスト
+Gemini OCRサービスのテスト (PDF直接送信版)
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from io import BytesIO
-from PIL import Image
+from unittest.mock import AsyncMock, MagicMock, patch, mock_open
+import tempfile
+import os
 
 from app.services.gemini_ocr_service import GeminiOCRService
-from app.models.schemas import OCRResult, FigurePosition
+from app.models.schemas import OCRResult
 from app.exceptions import OCRException
 
 
@@ -21,36 +21,45 @@ class TestGeminiOCRService:
         return "test_gemini_api_key"
 
     @pytest.fixture
-    def sample_image_bytes(self):
-        """テスト用画像データ"""
-        # 小さな白い画像を生成
-        img = Image.new('RGB', (100, 100), color='white')
-        buffer = BytesIO()
-        img.save(buffer, format='PNG')
-        return buffer.getvalue()
-
-    @pytest.fixture
-    def mock_gemini_response(self):
-        """モックGemini API応答"""
+    def mock_multi_page_response(self):
+        """モックGemini API応答 (複数ページ)"""
         json_response = """{
-  "detected_writing_mode": "horizontal",
-  "markdown_text": "# 第1章\\n\\nテスト内容です。",
-  "figures": [
+  "pages": [
     {
-      "id": 1,
-      "position": {"x": 100, "y": 200, "width": 400, "height": 300},
-      "type": "photo",
-      "description": "テスト画像",
-      "extracted_text": "図1"
+      "page_number": 1,
+      "detected_writing_mode": "horizontal",
+      "markdown_text": "# 第1章\\n\\nテスト内容です。",
+      "figures": [
+        {
+          "id": 1,
+          "position": {"x": 100, "y": 200, "width": 400, "height": 300},
+          "type": "photo",
+          "description": "テスト画像",
+          "extracted_text": "図1"
+        }
+      ],
+      "layout_info": {
+        "primary_direction": "horizontal",
+        "columns": 1,
+        "has_ruby": false,
+        "special_elements": [],
+        "mixed_regions": []
+      }
+    },
+    {
+      "page_number": 2,
+      "detected_writing_mode": "vertical",
+      "markdown_text": "# 第2章\\n\\n縦書きテスト。",
+      "figures": [],
+      "layout_info": {
+        "primary_direction": "vertical",
+        "columns": 2,
+        "has_ruby": true,
+        "special_elements": ["注釈"],
+        "mixed_regions": []
+      }
     }
-  ],
-  "layout_info": {
-    "primary_direction": "horizontal",
-    "columns": 1,
-    "has_ruby": false,
-    "special_elements": [],
-    "mixed_regions": []
-  }
+  ]
 }"""
         return f"```json\n{json_response}\n```"
 
@@ -58,142 +67,149 @@ class TestGeminiOCRService:
     def test_init(self, mock_client_class, api_key):
         """初期化テスト"""
         GeminiOCRService(api_key)
-
         mock_client_class.assert_called_once_with(api_key=api_key)
 
     @pytest.mark.asyncio
     @patch('app.services.gemini_ocr_service.genai.Client')
-    async def test_extract_page_success(
+    @patch('builtins.open', new_callable=mock_open, read_data=b'fake_pdf_content')
+    async def test_extract_from_pdf_success(
         self,
+        mock_file,
         mock_client_class,
         api_key,
-        sample_image_bytes,
-        mock_gemini_response
+        mock_multi_page_response
     ):
-        """extract_page - 成功ケース"""
+        """extract_from_pdf - 成功ケース"""
         # モッククライアントとレスポンスの設定
         mock_client = MagicMock()
+        mock_aio = MagicMock()
         mock_models = MagicMock()
         mock_response = MagicMock()
-        mock_response.text = mock_gemini_response
+        mock_response.text = mock_multi_page_response
 
-        mock_models.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_client.models = mock_models
+        mock_models.generate_content = AsyncMock(return_value=mock_response)
+        mock_aio.models = mock_models
+        mock_client.aio = mock_aio
         mock_client_class.return_value = mock_client
 
         service = GeminiOCRService(api_key)
-        result = await service.extract_page(sample_image_bytes, page_number=1)
 
-        # 結果検証
-        assert isinstance(result, OCRResult)
-        assert result.page_number == 1
-        assert result.detected_writing_mode == "horizontal"
-        assert "第1章" in result.markdown_text
-        assert len(result.figures) == 1
-        assert result.figures[0].type == "photo"
-        assert result.layout_info.primary_direction == "horizontal"
+        # 一時PDFファイルを作成
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_pdf:
+            tmp_pdf.write(b'fake_pdf_content')
+            pdf_path = tmp_pdf.name
+
+        try:
+            results = await service.extract_from_pdf(pdf_path)
+
+            # 結果検証
+            assert isinstance(results, list)
+            assert len(results) == 2
+
+            # ページ1の検証
+            assert isinstance(results[0], OCRResult)
+            assert results[0].page_number == 1
+            assert results[0].detected_writing_mode == "horizontal"
+            assert "第1章" in results[0].markdown_text
+            assert len(results[0].figures) == 1
+            assert results[0].figures[0].type == "photo"
+            assert results[0].layout_info.primary_direction == "horizontal"
+
+            # ページ2の検証
+            assert results[1].page_number == 2
+            assert results[1].detected_writing_mode == "vertical"
+            assert "第2章" in results[1].markdown_text
+            assert len(results[1].figures) == 0
+            assert results[1].layout_info.columns == 2
+            assert results[1].layout_info.has_ruby is True
+        finally:
+            # 一時ファイルを削除
+            if os.path.exists(pdf_path):
+                os.unlink(pdf_path)
 
     @pytest.mark.asyncio
     @patch('app.services.gemini_ocr_service.genai.Client')
-    async def test_extract_page_api_error(
+    @patch('builtins.open', new_callable=mock_open, read_data=b'fake_pdf_content')
+    async def test_extract_from_pdf_api_error(
         self,
+        mock_file,
         mock_client_class,
-        api_key,
-        sample_image_bytes
+        api_key
     ):
-        """extract_page - API呼び出しエラー"""
+        """extract_from_pdf - API呼び出しエラー"""
         # モッククライアントがエラーを返すように設定
         mock_client = MagicMock()
+        mock_aio = MagicMock()
         mock_models = MagicMock()
-        mock_models.generate_content_async = AsyncMock(
+        mock_models.generate_content = AsyncMock(
             side_effect=Exception("API connection error")
         )
-        mock_client.models = mock_models
+        mock_aio.models = mock_models
+        mock_client.aio = mock_aio
         mock_client_class.return_value = mock_client
 
         service = GeminiOCRService(api_key)
 
-        with pytest.raises(OCRException) as exc_info:
-            await service.extract_page(sample_image_bytes, page_number=5)
+        # 一時PDFファイルを作成
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_pdf:
+            tmp_pdf.write(b'fake_pdf_content')
+            pdf_path = tmp_pdf.name
 
-        assert "OCR failed for page 5" in str(exc_info.value)
-        assert exc_info.value.details["page"] == 5
+        try:
+            with pytest.raises(OCRException) as exc_info:
+                await service.extract_from_pdf(pdf_path)
 
-    def test_parse_response_with_json_block(self, api_key, mock_gemini_response):
-        """_parse_response - JSONブロック形式"""
+            assert "PDF OCR failed" in str(exc_info.value)
+        finally:
+            # 一時ファイルを削除
+            if os.path.exists(pdf_path):
+                os.unlink(pdf_path)
+
+    def test_parse_multi_page_response_with_json_block(self, api_key, mock_multi_page_response):
+        """_parse_multi_page_response - JSONブロック形式"""
         service = GeminiOCRService(api_key)
-        result = service._parse_response(mock_gemini_response, page_number=2)
+        results = service._parse_multi_page_response(mock_multi_page_response)
 
-        assert result.page_number == 2
-        assert result.detected_writing_mode == "horizontal"
-        assert len(result.figures) == 1
-        assert result.figures[0].position.x == 100
-        assert result.figures[0].position.y == 200
+        assert len(results) == 2
+        assert results[0].page_number == 1
+        assert results[1].page_number == 2
+        assert results[0].detected_writing_mode == "horizontal"
+        assert results[1].detected_writing_mode == "vertical"
 
-    def test_parse_response_plain_json(self, api_key):
-        """_parse_response - プレーンJSON形式"""
+    def test_parse_multi_page_response_plain_json(self, api_key):
+        """_parse_multi_page_response - プレーンJSON形式"""
         plain_json = """{
-  "detected_writing_mode": "vertical",
-  "markdown_text": "# 縦書きテスト",
-  "figures": [],
-  "layout_info": {
-    "primary_direction": "vertical",
-    "columns": 2,
-    "has_ruby": true,
-    "special_elements": ["注釈"],
-    "mixed_regions": []
-  }
+  "pages": [
+    {
+      "page_number": 1,
+      "detected_writing_mode": "horizontal",
+      "markdown_text": "# テスト",
+      "figures": [],
+      "layout_info": {
+        "primary_direction": "horizontal",
+        "columns": 1,
+        "has_ruby": false,
+        "special_elements": [],
+        "mixed_regions": []
+      }
+    }
+  ]
 }"""
         service = GeminiOCRService(api_key)
-        result = service._parse_response(plain_json, page_number=3)
+        results = service._parse_multi_page_response(plain_json)
 
-        assert result.page_number == 3
-        assert result.detected_writing_mode == "vertical"
-        assert len(result.figures) == 0
-        assert result.layout_info.columns == 2
-        assert result.layout_info.has_ruby is True
+        assert len(results) == 1
+        assert results[0].page_number == 1
+        assert results[0].detected_writing_mode == "horizontal"
 
-    def test_parse_response_invalid_json(self, api_key):
-        """_parse_response - 不正なJSON"""
+    def test_parse_multi_page_response_invalid_json(self, api_key):
+        """_parse_multi_page_response - 不正なJSON"""
         invalid_response = "This is not JSON at all"
 
         service = GeminiOCRService(api_key)
 
         with pytest.raises(ValueError, match="No valid JSON found"):
-            service._parse_response(invalid_response, page_number=1)
-
-    @pytest.mark.asyncio
-    async def test_extract_figures_from_image(self, api_key):
-        """extract_figures_from_image - 図解切り取り"""
-        # テスト用の大きな画像を作成
-        img = Image.new('RGB', (800, 600), color='blue')
-        buffer = BytesIO()
-        img.save(buffer, format='PNG')
-        image_bytes = buffer.getvalue()
-
-        # 切り取り位置を定義
-        figure_positions = [
-            FigurePosition(x=100, y=100, width=200, height=150),
-            FigurePosition(x=400, y=200, width=300, height=250)
-        ]
-
-        service = GeminiOCRService(api_key)
-        cropped_figures = await service.extract_figures_from_image(
-            image_bytes,
-            figure_positions
-        )
-
-        # 結果検証
-        assert len(cropped_figures) == 2
-        assert all(isinstance(fig, bytes) for fig in cropped_figures)
-
-        # 最初の切り取り画像のサイズ確認
-        cropped_img1 = Image.open(BytesIO(cropped_figures[0]))
-        assert cropped_img1.size == (200, 150)
-
-        # 2番目の切り取り画像のサイズ確認
-        cropped_img2 = Image.open(BytesIO(cropped_figures[1]))
-        assert cropped_img2.size == (300, 250)
+            service._parse_multi_page_response(invalid_response)
 
     def test_build_ocr_prompt(self, api_key):
         """_build_ocr_prompt - プロンプト生成"""
@@ -206,3 +222,4 @@ class TestGeminiOCRService:
         assert "horizontal" in prompt
         assert "JSON" in prompt
         assert "detected_writing_mode" in prompt
+        assert "pages" in prompt
