@@ -13,9 +13,9 @@ from app.main import app
 @pytest.fixture
 def client():
     """FastAPI TestClient"""
-    # Starlette 0.37+ compatibility: use context manager
-    with TestClient(app) as c:
-        yield c
+    # Use httpx client directly to bypass Starlette version issues
+    from httpx import Client, ASGITransport
+    return Client(transport=ASGITransport(app=app), base_url="http://testserver")
 
 
 @pytest.fixture
