@@ -35,11 +35,18 @@ class PDFGenerator:
         # HTMLオブジェクトを作成
         html_obj = HTML(string=html_content, base_url=base_url)
 
-        # 追加のCSS（PDF最適化用）
+        # 追加のCSS（PDF最適化用、Phase 4拡張）
         pdf_css = CSS(string="""
             @page {
                 size: A4;
                 margin: 20mm;
+
+                /* Phase 4: フッターにページ番号を表示 */
+                @bottom-center {
+                    content: counter(page);
+                    font-size: 10pt;
+                    color: #666;
+                }
             }
 
             body {
@@ -51,12 +58,29 @@ class PDFGenerator:
                 page-break-after: avoid;
             }
 
+            /* Phase 4: 図表の改ページ制御 */
+            .embedded-figure {
+                page-break-inside: avoid;
+                margin: 1.5em 0;
+            }
+
             img {
                 page-break-inside: avoid;
             }
 
             table {
                 page-break-inside: avoid;
+            }
+
+            /* Phase 4: セクション境界での改ページ制御（オプション） */
+            h1[id^="page-"] {
+                page-break-before: auto;
+            }
+
+            /* 孤立行・未亡人行の防止 */
+            p {
+                orphans: 3;
+                widows: 3;
             }
         """)
 
@@ -96,7 +120,7 @@ class PDFGenerator:
             job_id
         )
 
-        # PDF生成用に画像URLをファイルパスに変換または削除
+        # Phase 4: PDF生成用に画像URLをファイルパスに変換
         if job_id:
             import re
             from pathlib import Path
@@ -105,13 +129,13 @@ class PDFGenerator:
             # 絶対パスに変換
             storage_dir = Path("storage").resolve() / "documents" / job_id / "figures"
 
-            # /api/figures/{job_id}/... を file:// URLに変換、存在しない場合は削除
+            # Phase 4: /api/figures/{job_id}/... を file:// URLに変換
             def replace_img_url(match):
                 full_tag = match.group(0)
                 src_match = re.search(r'src="(/api/figures/[^"]+)"', full_tag)
                 if src_match:
                     api_url = src_match.group(1)
-                    # /api/figures/{job_id}/figures/page1_fig1.png → page1_fig1.png
+                    # /api/figures/{job_id}/figures/page_1_fig_1.png → page_1_fig_1.png
                     filename = api_url.split('/')[-1]
                     file_path = storage_dir / filename
                     if file_path.exists():
@@ -120,10 +144,13 @@ class PDFGenerator:
                         return full_tag.replace(api_url, file_url)
                     else:
                         # 画像ファイルが存在しない場合は、imgタグを削除
+                        import logging
+                        logging.warning(f"Image not found: {file_path}")
                         return ''
                 # 相対パスも削除
                 return ''
 
+            # Phase 4: figure要素内のimg要素も処理
             html_content = re.sub(r'<img[^>]+>', replace_img_url, html_content)
 
         # HTMLからPDFを生成
