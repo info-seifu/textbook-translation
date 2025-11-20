@@ -3,8 +3,10 @@ OCRオーケストレーター
 PDF全体のOCR処理を管理
 """
 from typing import List
-import asyncio
+import json
+from pathlib import Path
 from app.services.gemini_ocr_service import GeminiOCRService
+from app.services.pdf_image_extractor import PDFImageExtractor
 from app.models.schemas import OCRResult
 
 
@@ -14,6 +16,7 @@ class OCROrchestrator:
     def __init__(self, gemini_service: GeminiOCRService, db_client):
         self.gemini = gemini_service
         self.db_client = db_client
+        self.image_extractor = PDFImageExtractor()
 
     async def process_pdf(
         self,
@@ -51,11 +54,15 @@ class OCROrchestrator:
         # 3. マスターマークダウンをStorageに保存
         markdown_url = await self._save_markdown(job_id, full_markdown)
 
-        # 4. メタデータをDBに保存
-        await self._save_metadata(job_id, ocr_results, markdown_url)
+        # 4. 図表を画像として抽出（Phase 1）
+        figures_metadata = await self._extract_figures(
+            job_id, pdf_path, ocr_results
+        )
 
-        # 注意: 図解の切り取りはPDF直接送信方式では行わない
-        # 必要であれば後で追加実装可能
+        # 5. メタデータをDBに保存
+        await self._save_metadata(
+            job_id, ocr_results, markdown_url, figures_metadata
+        )
 
         return markdown_url
 
@@ -79,7 +86,6 @@ class OCROrchestrator:
 
         return ''.join(markdown_parts)
 
-
     async def _save_markdown(self, job_id: str, markdown: str) -> str:
         """マスターマークダウンをStorageに保存"""
 
@@ -100,11 +106,72 @@ class OCROrchestrator:
         except Exception as e:
             raise Exception(f"Failed to save markdown: {str(e)}")
 
+    async def _extract_figures(
+        self,
+        job_id: str,
+        pdf_path: str,
+        ocr_results: List[OCRResult]
+    ) -> List[dict]:
+        """
+        PDFから図表を画像として抽出
+
+        Args:
+            job_id: ジョブID
+            pdf_path: PDFファイルパス
+            ocr_results: OCR結果リスト
+
+        Returns:
+            抽出した図表のメタデータリスト
+        """
+        # OCR結果から図表情報を収集
+        figures_to_extract = []
+        for result in ocr_results:
+            for fig in result.figures:
+                figures_to_extract.append({
+                    'page': result.page_number,
+                    'id': fig.id,
+                    'position': {
+                        'x': fig.position.x,
+                        'y': fig.position.y,
+                        'width': fig.position.width,
+                        'height': fig.position.height
+                    },
+                    'type': fig.type,
+                    'description': fig.description
+                })
+
+        if not figures_to_extract:
+            return []
+
+        # ローカルストレージのディレクトリパスを取得
+        # PDFパスから親ディレクトリを取得（storage/documents/{job_id}/）
+        pdf_path_obj = Path(pdf_path)
+        job_dir = pdf_path_obj.parent
+        figures_dir = job_dir / 'figures'
+
+        # 図表を抽出
+        extracted_figures = self.image_extractor.extract_figures_from_pdf(
+            pdf_path=pdf_path,
+            figures_metadata=figures_to_extract,
+            output_dir=str(figures_dir)
+        )
+
+        # メタデータをJSONファイルとして保存
+        metadata_path = figures_dir / 'metadata.json'
+        metadata = {
+            'figures': extracted_figures
+        }
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+        return extracted_figures
+
     async def _save_metadata(
         self,
         job_id: str,
         ocr_results: List[OCRResult],
-        markdown_url: str
+        markdown_url: str,
+        figures_metadata: List[dict] = None
     ):
         """レイアウト情報等をDBに保存"""
 
@@ -130,6 +197,10 @@ class OCROrchestrator:
                 for r in ocr_results
             ]
         }
+
+        # Phase 1: 抽出した図表のメタデータを追加
+        if figures_metadata:
+            figures_data['extracted_figures'] = figures_metadata
 
         self.db_client.table('translation_jobs').update({
             'layout_metadata': layout_metadata,
