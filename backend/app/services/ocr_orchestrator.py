@@ -2,7 +2,7 @@
 OCRオーケストレーター
 PDF全体のOCR処理を管理
 """
-from typing import List
+from typing import List, Dict, Tuple
 import json
 from pathlib import Path
 from app.services.gemini_ocr_service import GeminiOCRService
@@ -48,8 +48,8 @@ class OCROrchestrator:
             'page_count': page_count
         }).eq('id', job_id).execute()
 
-        # 2. マークダウン統合
-        full_markdown = self._merge_markdown(ocr_results)
+        # 2. マークダウン統合（Phase 2: セクションメタデータも生成）
+        full_markdown, sections_metadata = self._merge_markdown(ocr_results)
 
         # 3. マスターマークダウンをStorageに保存
         markdown_url = await self._save_markdown(job_id, full_markdown)
@@ -59,32 +59,75 @@ class OCROrchestrator:
             job_id, pdf_path, ocr_results
         )
 
-        # 5. メタデータをDBに保存
+        # 5. セクションメタデータを図表情報とマージ
+        sections_with_figures = self._merge_section_and_figure_metadata(
+            sections_metadata, figures_metadata
+        )
+
+        # 6. メタデータをDBに保存
         await self._save_metadata(
-            job_id, ocr_results, markdown_url, figures_metadata
+            job_id, ocr_results, markdown_url,
+            figures_metadata, sections_with_figures
         )
 
         return markdown_url
 
-    def _merge_markdown(self, ocr_results: List[OCRResult]) -> str:
-        """各ページのマークダウンを統合"""
+    def _merge_markdown(
+        self,
+        ocr_results: List[OCRResult]
+    ) -> Tuple[str, List[Dict]]:
+        """
+        各ページのマークダウンを統合（Phase 2改善版）
+
+        Returns:
+            (統合マークダウン, セクションメタデータ)
+        """
 
         markdown_parts = []
+        sections = []
 
         for result in ocr_results:
-            markdown_parts.append(f"# ページ {result.page_number}\n\n")
+            page_num = result.page_number
+
+            # ページ見出しをセクションとして扱う
+            section_id = f"page-{page_num}"
+
+            # Phase 2: HTMLタグで見出しにID属性を付与
+            markdown_parts.append(
+                f'<h1 id="{section_id}">ページ {page_num}</h1>\n\n'
+            )
+
+            # セクション情報を記録
+            section_info = {
+                "id": section_id,
+                "title_ja": f"ページ {page_num}",
+                "title_en": None,
+                "original_pages": [page_num],
+                "translated_pages": None,
+                "figures": []
+            }
+
+            # 本文を追加
             markdown_parts.append(result.markdown_text)
             markdown_parts.append("\n\n")
 
-            # 図解参照を挿入
+            # 図表参照を挿入
             for fig in result.figures:
+                fig_id = f"page_{page_num}_fig_{fig.id}"
+                section_info["figures"].append(fig_id)
+
+                # Phase 2: 図表参照をMarkdown画像記法で挿入
+                caption = fig.description if fig.description else f"図{fig.id}"
                 markdown_parts.append(
-                    f"![図{fig.id}](figures/page{result.page_number}_fig{fig.id}.png)\n\n"
+                    f"![{caption}](figures/{fig_id}.png)\n\n"
                 )
                 if fig.description:
-                    markdown_parts.append(f"*{fig.description}*\n\n")
+                    markdown_parts.append(f"*{caption}*\n\n")
 
-        return ''.join(markdown_parts)
+            sections.append(section_info)
+
+        merged_markdown = ''.join(markdown_parts)
+        return merged_markdown, sections
 
     async def _save_markdown(self, job_id: str, markdown: str) -> str:
         """マスターマークダウンをStorageに保存"""
@@ -105,6 +148,48 @@ class OCROrchestrator:
 
         except Exception as e:
             raise Exception(f"Failed to save markdown: {str(e)}")
+
+    def _merge_section_and_figure_metadata(
+        self,
+        sections: List[Dict],
+        figures: List[Dict]
+    ) -> List[Dict]:
+        """
+        セクションメタデータと図表メタデータをマージ
+
+        Args:
+            sections: セクション情報リスト
+            figures: 図表メタデータリスト
+
+        Returns:
+            図表情報を含むセクションメタデータ
+        """
+        # 図表をページごとにグループ化
+        figures_by_page = {}
+        for fig in figures:
+            page = fig.get("page", 1)
+            if page not in figures_by_page:
+                figures_by_page[page] = []
+            figures_by_page[page].append(fig)
+
+        # セクションに図表のsection_idを設定
+        for section in sections:
+            original_pages = section.get("original_pages", [])
+            section_id = section.get("id", "")
+
+            # このセクションに含まれる図表を収集
+            section_figures = []
+            for page in original_pages:
+                page_figures = figures_by_page.get(page, [])
+                for fig in page_figures:
+                    # 図表にsection_idを追加
+                    fig["section_id"] = section_id
+                    section_figures.append(fig["id"])
+
+            # セクションの図表リストを更新
+            section["figures"] = section_figures
+
+        return sections
 
     async def _extract_figures(
         self,
@@ -171,7 +256,8 @@ class OCROrchestrator:
         job_id: str,
         ocr_results: List[OCRResult],
         markdown_url: str,
-        figures_metadata: List[dict] = None
+        figures_metadata: List[dict] = None,
+        sections_metadata: List[dict] = None
     ):
         """レイアウト情報等をDBに保存"""
 
@@ -186,6 +272,10 @@ class OCROrchestrator:
                 for r in ocr_results
             ]
         }
+
+        # Phase 2: セクション情報を追加
+        if sections_metadata:
+            layout_metadata['sections'] = sections_metadata
 
         figures_data = {
             'total_figures': sum(len(r.figures) for r in ocr_results),

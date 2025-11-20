@@ -74,11 +74,14 @@ class TestOCROrchestrator:
         )
         ocr_results = [ocr_result_1, ocr_result_2]
 
-        merged = orchestrator._merge_markdown(ocr_results)
+        merged, sections = orchestrator._merge_markdown(ocr_results)
 
         assert "ページ 1" in merged
         assert "ページ 2" in merged
         assert "テストページ" in merged
+        assert len(sections) == 2
+        assert sections[0]["id"] == "page-1"
+        assert sections[1]["id"] == "page-2"
 
     def test_merge_markdown_with_figures(self, orchestrator, sample_ocr_result):
         """_merge_markdown - 図解付きマークダウン統合"""
@@ -91,9 +94,11 @@ class TestOCROrchestrator:
         )
         sample_ocr_result.figures = [figure]
 
-        merged = orchestrator._merge_markdown([sample_ocr_result])
+        merged, sections = orchestrator._merge_markdown([sample_ocr_result])
 
-        assert "![図1](figures/page1_fig1.png)" in merged
+        assert "![テスト図](figures/page_1_fig_1.png)" in merged
+        assert len(sections) == 1
+        assert sections[0]["figures"] == ["page_1_fig_1"]
 
     async def test_process_pdf_basic(
         self,
@@ -138,11 +143,14 @@ class TestOCROrchestratorMerge:
 
     def test_merge_empty_results(self, orchestrator):
         """_merge_markdown - 空の結果"""
-        merged = orchestrator._merge_markdown([])
+        merged, sections = orchestrator._merge_markdown([])
         assert merged == ""
+        assert sections == []
 
     def test_merge_single_page(self, orchestrator, sample_ocr_result):
         """_merge_markdown - 単一ページ"""
-        merged = orchestrator._merge_markdown([sample_ocr_result])
+        merged, sections = orchestrator._merge_markdown([sample_ocr_result])
         assert "ページ 1" in merged
         assert "テストページ" in merged
+        assert len(sections) == 1
+        assert sections[0]["id"] == "page-1"
