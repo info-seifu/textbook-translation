@@ -40,8 +40,8 @@ async def get_figure(
     """
     try:
         # ローカルストレージのパスを構築
-        # storage/documents/{job_id}/figures/page_1_fig_1.png
-        base_path = FilePath("storage/documents")
+        # uploads/{job_id}/figures/page_1_fig_1.png
+        base_path = FilePath("uploads")
         full_path = base_path / job_id / figure_path
 
         # パストラバーサル攻撃を防ぐ
@@ -101,8 +101,8 @@ async def list_figures(
         HTTPException: メタデータが見つからない場合
     """
     try:
-        # storage/documents/{job_id}/figures/metadata.json を読み込む
-        base_path = FilePath("storage/documents")
+        # uploads/{job_id}/figures/metadata.json を読み込む
+        base_path = FilePath("uploads")
         metadata_path = base_path / job_id / "figures" / "metadata.json"
 
         # パストラバーサル攻撃を防ぐ

@@ -20,7 +20,14 @@
       "Bash(python -m uvicorn:*)",
       "Bash(curl:*)",
       "Bash(npm run dev:*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(powershell -Command \"Start-Process ''C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe''\")",
+      "Bash(docker-compose ps:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker exec:*)",
+      "Read(//c/Users/濱田英樹/Downloads/**)",
+      "Bash(docker-compose restart:*)"
     ],
     "deny": [],
     "ask": []

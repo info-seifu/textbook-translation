@@ -72,9 +72,15 @@ class PDFGenerator:
                 page-break-inside: avoid;
             }
 
-            /* Phase 4: セクション境界での改ページ制御（オプション） */
-            h1[id^="page-"] {
-                page-break-before: auto;
+            /* Page X 見出しで必ず改ページ */
+            h1.page-break {
+                page-break-before: always;
+                /* PDF出力時はPage X見出しを非表示にする（オプション） */
+                /* display: none; */
+                /* または目立たなくする */
+                font-size: 0.7em;
+                color: #ccc;
+                margin-top: 0;
             }
 
             /* 孤立行・未亡人行の防止 */
@@ -125,9 +131,9 @@ class PDFGenerator:
             import re
             from pathlib import Path
 
-            # storage/documents/{job_id}/figures/ の構造
+            # uploads/{job_id}/figures/ の構造
             # 絶対パスに変換
-            storage_dir = Path("storage").resolve() / "documents" / job_id / "figures"
+            storage_dir = Path("uploads").resolve() / job_id / "figures"
 
             # Phase 4: /api/figures/{job_id}/... を file:// URLに変換
             def replace_img_url(match):

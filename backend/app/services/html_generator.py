@@ -193,6 +193,15 @@ class HTMLGenerator:
         h2 { font-size: 1.5em; }
         h3 { font-size: 1.3em; }
 
+        /* Page X 見出しを目立たなくする */
+        h1.page-break {
+            font-size: 0.9em;
+            color: #999;
+            border-bottom: 1px dotted #ddd;
+            padding-bottom: 0.2em;
+            margin-top: 2em;
+        }
+
         p {
             margin-bottom: 1em;
         }
@@ -326,8 +335,13 @@ class HTMLGenerator:
             }
 
             /* Phase 3: セクション単位での改ページ制御 */
-            h1[id^="page-"] {
-                page-break-before: auto;
+            /* Page X 見出しで必ず改ページ */
+            h1.page-break {
+                page-break-before: always;
+                /* Page X 見出しを目立たなくする */
+                font-size: 0.8em;
+                color: #999;
+                margin-top: 0;
             }
 
             /* 図表が分割されないようにする */
