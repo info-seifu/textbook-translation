@@ -47,10 +47,26 @@ async def download_markdown(output_id: str):
             raise HTTPException(status_code=404, detail="Translated markdown not found")
 
         # Storageからダウンロード
-        async with httpx.AsyncClient() as client:
-            response = await client.get(markdown_url)
-            response.raise_for_status()
-            markdown_content = response.content
+        if markdown_url.startswith('file://'):
+            # ローカルファイルシステムから読み込み
+            import os
+
+            # file:// プレフィックスを削除してパスを取得
+            # Windows の file:// は file://C:\path の形式なので、[7:]で'file://'を削除
+            file_path = markdown_url.replace('file://', '', 1)
+
+            # パスの存在確認と読み込み
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail=f"Markdown file not found: {file_path}")
+
+            with open(file_path, 'rb') as f:
+                markdown_content = f.read()
+        else:
+            # HTTPからダウンロード (Supabase等)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(markdown_url)
+                response.raise_for_status()
+                markdown_content = response.content
 
         # ファイル名生成
         target_language = output.data['target_language']
@@ -170,10 +186,25 @@ async def download_html(output_id: str):
             raise HTTPException(status_code=404, detail="Translated markdown not found")
 
         # Storageからマークダウンをダウンロード
-        async with httpx.AsyncClient() as client:
-            response = await client.get(markdown_url)
-            response.raise_for_status()
-            markdown_text = response.text
+        if markdown_url.startswith('file://'):
+            # ローカルファイルシステムから読み込み
+            import os
+
+            # file:// プレフィックスを削除してパスを取得
+            file_path = markdown_url.replace('file://', '', 1)
+
+            # パスの存在確認と読み込み
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail=f"Markdown file not found: {file_path}")
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                markdown_text = f.read()
+        else:
+            # HTTPからダウンロード (Supabase等)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(markdown_url)
+                response.raise_for_status()
+                markdown_text = response.text
 
         # HTMLを生成
         html_generator = HTMLGenerator()
@@ -246,10 +277,25 @@ async def download_pdf(output_id: str):
             raise HTTPException(status_code=404, detail="Translated markdown not found")
 
         # Storageからマークダウンをダウンロード
-        async with httpx.AsyncClient() as client:
-            response = await client.get(markdown_url)
-            response.raise_for_status()
-            markdown_text = response.text
+        if markdown_url.startswith('file://'):
+            # ローカルファイルシステムから読み込み
+            import os
+
+            # file:// プレフィックスを削除してパスを取得
+            file_path = markdown_url.replace('file://', '', 1)
+
+            # パスの存在確認と読み込み
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail=f"Markdown file not found: {file_path}")
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                markdown_text = f.read()
+        else:
+            # HTTPからダウンロード (Supabase等)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(markdown_url)
+                response.raise_for_status()
+                markdown_text = response.text
 
         # PDFを生成
         pdf_generator = PDFGenerator()
@@ -274,4 +320,6 @@ async def download_pdf(output_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to download PDF: {str(e)}")

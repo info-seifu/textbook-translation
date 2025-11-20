@@ -22,6 +22,9 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 
+# Ensure public directory exists (even if empty)
+RUN mkdir -p /app/public
+
 # Stage 3: Runner
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -34,9 +37,9 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copy built application
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Change ownership to nextjs user
 RUN chown -R nextjs:nodejs /app
