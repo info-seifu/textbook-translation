@@ -27,7 +27,10 @@
       "Bash(docker-compose logs:*)",
       "Bash(docker exec:*)",
       "Read(//c/Users/濱田英樹/Downloads/**)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose restart:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(python -m flake8:*)"
     ],
     "deny": [],
     "ask": []

@@ -92,10 +92,10 @@ class OCROrchestrator:
             # ページ見出しをセクションとして扱う
             section_id = f"page-{page_num}"
 
-            # Phase 2: HTMLタグで見出しにID属性を付与
-            # page-breakクラスを追加して改ページ制御用に使用
+            # Phase 2: 改ページ制御用の空divを挿入（見出しテキストは表示しない）
+            # PDF生成時の改ページトリガーとして使用
             markdown_parts.append(
-                f'<h1 id="{section_id}" class="page-break">ページ {page_num}</h1>\n\n'
+                f'<div id="{section_id}" class="page-break-marker"></div>\n\n'
             )
 
             # セクション情報を記録

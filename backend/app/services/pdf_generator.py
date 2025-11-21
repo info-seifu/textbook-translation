@@ -72,15 +72,12 @@ class PDFGenerator:
                 page-break-inside: avoid;
             }
 
-            /* Page X 見出しで必ず改ページ */
-            h1.page-break {
+            /* 改ページマーカーで必ず改ページ（PDF出力時は非表示） */
+            .page-break-marker {
                 page-break-before: always;
-                /* PDF出力時はPage X見出しを非表示にする（オプション） */
-                /* display: none; */
-                /* または目立たなくする */
-                font-size: 0.7em;
-                color: #ccc;
-                margin-top: 0;
+                display: none; /* PDF出力時は完全に非表示 */
+                margin: 0;
+                height: 0;
             }
 
             /* 孤立行・未亡人行の防止 */
@@ -135,29 +132,45 @@ class PDFGenerator:
             # 絶対パスに変換
             storage_dir = Path("uploads").resolve() / job_id / "figures"
 
+            # デバッグ: ディレクトリの存在確認
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"PDF generation: Looking for figures in {storage_dir}")
+            if storage_dir.exists():
+                files = list(storage_dir.glob("*.png"))
+                logger.info(f"Found {len(files)} PNG files: {[f.name for f in files]}")
+            else:
+                logger.warning(f"Figures directory does not exist: {storage_dir}")
+
             # Phase 4: /api/figures/{job_id}/... を file:// URLに変換
             def replace_img_url(match):
                 full_tag = match.group(0)
+                logger.debug(f"Processing img tag: {full_tag[:100]}...")
                 src_match = re.search(r'src="(/api/figures/[^"]+)"', full_tag)
                 if src_match:
                     api_url = src_match.group(1)
                     # /api/figures/{job_id}/figures/page_1_fig_1.png → page_1_fig_1.png
                     filename = api_url.split('/')[-1]
                     file_path = storage_dir / filename
+                    logger.info(f"Checking figure: {filename} at {file_path}")
                     if file_path.exists():
                         # file:// URLに変換（絶対パス）
                         file_url = file_path.as_uri()
-                        return full_tag.replace(api_url, file_url)
+                        logger.info(f"Figure found, converting to: {file_url}")
+                        result = full_tag.replace(api_url, file_url)
+                        logger.debug(f"Replaced tag: {result[:100]}...")
+                        return result
                     else:
-                        # 画像ファイルが存在しない場合は、imgタグを削除
-                        import logging
-                        logging.warning(f"Image not found: {file_path}")
+                        # 画像ファイルが存在しない場合
+                        logger.warning(f"Image not found: {file_path}")
                         return ''
-                # 相対パスも削除
-                return ''
+                # 相対パスも処理
+                logger.debug(f"No API URL found in tag: {full_tag[:100]}...")
+                return full_tag
 
             # Phase 4: figure要素内のimg要素も処理
             html_content = re.sub(r'<img[^>]+>', replace_img_url, html_content)
+            logger.info("PDF generation: Image URL replacement completed")
 
         # HTMLからPDFを生成
         return self.generate_pdf(html_content)
