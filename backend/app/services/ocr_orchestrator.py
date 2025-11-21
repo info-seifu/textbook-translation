@@ -4,6 +4,7 @@ PDF全体のOCR処理を管理
 """
 from typing import List, Dict, Tuple
 import json
+import re
 from pathlib import Path
 from app.services.gemini_ocr_service import GeminiOCRService
 from app.services.pdf_image_extractor import PDFImageExtractor
@@ -17,6 +18,37 @@ class OCROrchestrator:
         self.gemini = gemini_service
         self.db_client = db_client
         self.image_extractor = PDFImageExtractor()
+
+    @staticmethod
+    def _has_heading_at_start(markdown_text: str) -> bool:
+        """
+        Markdownテキストの先頭に見出しがあるかチェック
+
+        Args:
+            markdown_text: チェック対象のMarkdownテキスト
+
+        Returns:
+            見出しがある場合True
+        """
+        if not markdown_text:
+            return False
+
+        # 先頭の空白行をスキップ
+        lines = markdown_text.strip().split('\n')
+        if not lines:
+            return False
+
+        first_line = lines[0].strip()
+
+        # Markdown見出し記号（# ## ###）で始まる
+        if re.match(r'^#{1,6}\s+\S', first_line):
+            return True
+
+        # HTMLタグの見出し（<h1> <h2> <h3>）
+        if re.match(r'^<h[1-6][^>]*>.*?</h[1-6]>', first_line):
+            return True
+
+        return False
 
     async def process_pdf(
         self,
@@ -86,17 +118,19 @@ class OCROrchestrator:
         markdown_parts = []
         sections = []
 
-        for result in ocr_results:
+        for i, result in enumerate(ocr_results):
             page_num = result.page_number
 
             # ページ見出しをセクションとして扱う
             section_id = f"page-{page_num}"
 
-            # Phase 2: 改ページ制御用の空divを挿入（見出しテキストは表示しない）
-            # PDF生成時の改ページトリガーとして使用
-            markdown_parts.append(
-                f'<div id="{section_id}" class="page-break-marker"></div>\n\n'
-            )
+            # 見出しベースの改ページ制御:
+            # - 最初のページは常に改ページマーカーを挿入
+            # - 2ページ目以降は、見出しがある場合のみ改ページマーカーを挿入
+            if i == 0 or self._has_heading_at_start(result.markdown_text):
+                markdown_parts.append(
+                    f'<div id="{section_id}" class="page-break-marker"></div>\n\n'
+                )
 
             # セクション情報を記録
             section_info = {
