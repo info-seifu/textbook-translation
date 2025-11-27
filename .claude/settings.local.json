@@ -30,7 +30,8 @@
       "Bash(docker-compose restart:*)",
       "Bash(docker logs:*)",
       "Bash(docker-compose down:*)",
-      "Bash(python -m flake8:*)"
+      "Bash(python -m flake8:*)",
+      "Bash(docker images:*)"
     ],
     "deny": [],
     "ask": []

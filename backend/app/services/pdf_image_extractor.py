@@ -92,16 +92,31 @@ class PDFImageExtractor:
                     width = position.get("width", 0)
                     height = position.get("height", 0)
 
+                    # 座標情報をログ出力
+                    logger.debug(
+                        f"Processing figure: page={page_num}, fig={fig_id}, "
+                        f"type={fig_meta.get('type', 'unknown')}, "
+                        f"position=({x}, {y}, {width}, {height})"
+                    )
+
                     # PyMuPDFの座標系（左上原点）に変換
                     # bboxは (x0, y0, x1, y1) の形式
                     bbox = fitz.Rect(x, y, x + width, y + height)
 
                     # ページの範囲内にクリップ
+                    original_bbox = bbox
                     bbox = bbox & page.rect
+
+                    if original_bbox != bbox:
+                        logger.warning(
+                            f"Bbox clipped to page bounds: "
+                            f"original={original_bbox}, clipped={bbox}"
+                        )
 
                     if bbox.is_empty or bbox.width < 10 or bbox.height < 10:
                         logger.warning(
-                            f"Invalid bbox for page {page_num}, fig {fig_id}: {bbox}"
+                            f"Invalid bbox for page {page_num}, fig {fig_id}: {bbox} "
+                            f"(size: {bbox.width:.0f}x{bbox.height:.0f})"
                         )
                         continue
 
@@ -119,7 +134,14 @@ class PDFImageExtractor:
 
                     # 画像を保存
                     img.save(str(file_path), "PNG")
-                    logger.info(f"Saved figure: {file_path}")
+
+                    # 詳細なログ情報
+                    logger.info(
+                        f"Extracted figure: {filename} - "
+                        f"size={pix.width}x{pix.height}px, "
+                        f"bbox=({bbox.x0:.0f}, {bbox.y0:.0f}, {bbox.x1:.0f}, {bbox.y1:.0f}), "
+                        f"file_size={len(img_data)} bytes"
+                    )
 
                     # 正規化座標を計算（0.0 - 1.0）
                     normalized_bbox = [
