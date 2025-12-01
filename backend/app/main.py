@@ -10,7 +10,7 @@ import os
 import logging
 
 from app.config import settings
-from app.api import upload, translate, status, download, batch_translate
+from app.api import upload, translate, status, download, batch_translate, figures
 from app.utils.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -112,6 +112,7 @@ app.include_router(translate.router, prefix="/api", tags=["translate"])
 app.include_router(batch_translate.router, prefix="/api", tags=["batch-translate"])
 app.include_router(status.router, prefix="/api", tags=["status"])
 app.include_router(download.router, prefix="/api", tags=["download"])
+app.include_router(figures.router, prefix="/api", tags=["figures"])  # Phase 3
 
 
 if __name__ == "__main__":

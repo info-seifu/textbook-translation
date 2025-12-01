@@ -35,20 +35,70 @@ class PDFGenerator:
         # HTMLオブジェクトを作成
         html_obj = HTML(string=html_content, base_url=base_url)
 
-        # 追加のCSS（PDF最適化用）
+        # 追加のCSS（PDF最適化用、Phase 4拡張）
         pdf_css = CSS(string="""
             @page {
                 size: A4;
                 margin: 20mm;
+
+                /* Phase 4: フッターにページ番号を表示 */
+                @bottom-center {
+                    content: counter(page);
+                    font-size: 10pt;
+                    color: #666;
+                }
             }
 
             body {
+                font-size: 10pt;  /* 11pt -> 10pt に縮小 */
+                line-height: 1.4;  /* 行間を狭く（デフォルトは1.6程度） */
+            }
+
+            /* 見出しのフォントサイズを調整 */
+            h1 {
+                font-size: 16pt;  /* より控えめなサイズに */
+                margin-top: 0.8em;
+                margin-bottom: 0.5em;
+                line-height: 1.2;
+            }
+
+            h2 {
+                font-size: 14pt;  /* Level 2相当のサイズ */
+                margin-top: 0.7em;
+                margin-bottom: 0.4em;
+                line-height: 1.2;
+            }
+
+            h3 {
+                font-size: 12pt;
+                margin-top: 0.6em;
+                margin-bottom: 0.3em;
+                line-height: 1.2;
+            }
+
+            h4, h5, h6 {
                 font-size: 11pt;
+                margin-top: 0.5em;
+                margin-bottom: 0.3em;
+                line-height: 1.2;
+            }
+
+            /* 段落の行間を調整 */
+            p {
+                margin-top: 0.4em;
+                margin-bottom: 0.4em;
+                line-height: 1.4;  /* 行間を狭く */
             }
 
             /* ページ区切り制御 */
             h1, h2, h3 {
                 page-break-after: avoid;
+            }
+
+            /* Phase 4: 図表の改ページ制御 */
+            .embedded-figure {
+                page-break-inside: avoid;
+                margin: 1.5em 0;
             }
 
             img {
@@ -57,6 +107,20 @@ class PDFGenerator:
 
             table {
                 page-break-inside: avoid;
+            }
+
+            /* 改ページマーカーで必ず改ページ（PDF出力時は非表示） */
+            .page-break-marker {
+                page-break-before: always;
+                display: none; /* PDF出力時は完全に非表示 */
+                margin: 0;
+                height: 0;
+            }
+
+            /* 孤立行・未亡人行の防止 */
+            p {
+                orphans: 3;
+                widows: 3;
             }
         """)
 
@@ -96,35 +160,54 @@ class PDFGenerator:
             job_id
         )
 
-        # PDF生成用に画像URLをファイルパスに変換または削除
+        # Phase 4: PDF生成用に画像URLをファイルパスに変換
         if job_id:
             import re
             from pathlib import Path
 
-            # storage/documents/{job_id}/figures/ の構造
+            # uploads/{job_id}/figures/ の構造
             # 絶対パスに変換
-            storage_dir = Path("storage").resolve() / "documents" / job_id / "figures"
+            storage_dir = Path("uploads").resolve() / job_id / "figures"
 
-            # /api/figures/{job_id}/... を file:// URLに変換、存在しない場合は削除
+            # デバッグ: ディレクトリの存在確認
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"PDF generation: Looking for figures in {storage_dir}")
+            if storage_dir.exists():
+                files = list(storage_dir.glob("*.png"))
+                logger.info(f"Found {len(files)} PNG files: {[f.name for f in files]}")
+            else:
+                logger.warning(f"Figures directory does not exist: {storage_dir}")
+
+            # Phase 4: /api/figures/{job_id}/... を file:// URLに変換
             def replace_img_url(match):
                 full_tag = match.group(0)
+                logger.debug(f"Processing img tag: {full_tag[:100]}...")
                 src_match = re.search(r'src="(/api/figures/[^"]+)"', full_tag)
                 if src_match:
                     api_url = src_match.group(1)
-                    # /api/figures/{job_id}/figures/page1_fig1.png → page1_fig1.png
+                    # /api/figures/{job_id}/figures/page_1_fig_1.png → page_1_fig_1.png
                     filename = api_url.split('/')[-1]
                     file_path = storage_dir / filename
+                    logger.info(f"Checking figure: {filename} at {file_path}")
                     if file_path.exists():
                         # file:// URLに変換（絶対パス）
                         file_url = file_path.as_uri()
-                        return full_tag.replace(api_url, file_url)
+                        logger.info(f"Figure found, converting to: {file_url}")
+                        result = full_tag.replace(api_url, file_url)
+                        logger.debug(f"Replaced tag: {result[:100]}...")
+                        return result
                     else:
-                        # 画像ファイルが存在しない場合は、imgタグを削除
+                        # 画像ファイルが存在しない場合
+                        logger.warning(f"Image not found: {file_path}")
                         return ''
-                # 相対パスも削除
-                return ''
+                # 相対パスも処理
+                logger.debug(f"No API URL found in tag: {full_tag[:100]}...")
+                return full_tag
 
+            # Phase 4: figure要素内のimg要素も処理
             html_content = re.sub(r'<img[^>]+>', replace_img_url, html_content)
+            logger.info("PDF generation: Image URL replacement completed")
 
         # HTMLからPDFを生成
         return self.generate_pdf(html_content)
