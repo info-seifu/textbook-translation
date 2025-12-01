@@ -92,6 +92,137 @@ class PDFImageExtractor:
                     width = position.get("width", 0)
                     height = position.get("height", 0)
 
+                    # デバッグログ：元の座標を記録
+                    logger.info(
+                        f"[DEBUG] Processing {fig_id} - Original position from metadata: "
+                        f"x={x}, y={y}, width={width}, height={height}, "
+                        f"type={fig_type}, description='{description[:50] if description else 'N/A'}...'"
+                    )
+
+                    # 座標調整前の値を保存（比較用）
+                    original_x = x
+                    original_y = y
+                    original_width = width
+                    original_height = height
+                    adjustment_applied = False
+
+                    # 座標調整：Geminiが図の境界を見落とすことがあるため
+                    # 特にダイアグラムと表は上部・側面が切れやすい
+
+                    # アローダイアグラム・フローチャートの特別処理（Gemini OCR調整と連動）
+                    if fig_type == 'diagram' or 'ダイアグラム' in description or 'arrow' in description.lower() or 'figure' in description.lower():
+                        logger.info(f"[DEBUG] {fig_id} identified as DIAGRAM/FIGURE")
+
+                        # Gemini OCRですでに大幅調整されている場合（y=0-50の場合）は追加調整不要
+                        if y < 50:
+                            logger.info(
+                                f"[DEBUG] {fig_id}: Already adjusted to top of page (y={y}) by Gemini OCR. "
+                                f"Skipping additional adjustment to avoid over-expansion."
+                            )
+                            # 左右の余白だけ確保
+                            horizontal_expansion = 20
+                            adjusted_x = max(0, x - horizontal_expansion)
+                            adjusted_width = width + (x - adjusted_x) + horizontal_expansion
+                            adjusted_width = min(adjusted_width, page_width - adjusted_x)
+
+                            if adjusted_x != x or adjusted_width != width:
+                                logger.info(
+                                    f"[DEBUG] Horizontal margin adjustment for {fig_id}: "
+                                    f"x: {x} -> {adjusted_x}, width: {width} -> {adjusted_width}"
+                                )
+                                x = adjusted_x
+                                width = adjusted_width
+                                adjustment_applied = True
+
+                        # Gemini OCRで中程度の調整済み（y=50-200の場合）
+                        elif y < 200:
+                            logger.info(
+                                f"[DEBUG] {fig_id}: Moderately adjusted by Gemini OCR (y={y}). "
+                                f"Applying minimal additional margin."
+                            )
+                            # 小さめの追加余白
+                            upward_margin = 50
+                            horizontal_margin = 20
+
+                            adjusted_y = max(0, y - upward_margin)
+                            adjusted_height = height + (y - adjusted_y) + 30  # 下にも30px
+                            adjusted_height = min(adjusted_height, page_height - adjusted_y)
+
+                            adjusted_x = max(0, x - horizontal_margin)
+                            adjusted_width = width + (x - adjusted_x) + horizontal_margin
+                            adjusted_width = min(adjusted_width, page_width - adjusted_x)
+
+                            logger.info(
+                                f"[DEBUG] Margin adjustment for {fig_id}: "
+                                f"y: {y} -> {adjusted_y}, height: {height} -> {adjusted_height}, "
+                                f"x: {x} -> {adjusted_x}, width: {width} -> {adjusted_width}"
+                            )
+
+                            x = adjusted_x
+                            y = adjusted_y
+                            width = adjusted_width
+                            height = adjusted_height
+                            adjustment_applied = True
+
+                        # Gemini OCRでまだ不十分な調整（y >= 200の場合）
+                        else:
+                            logger.warning(
+                                f"[DEBUG] {fig_id}: Still at mid-page position (y={y}) after Gemini OCR. "
+                                f"Applying EMERGENCY additional expansion."
+                            )
+                            # さらに積極的な拡張
+                            upward_expansion = min(y, 300)  # y座標分または300pxのどちらか小さい方
+                            adjusted_y = max(0, y - upward_expansion)
+                            adjusted_height = height + (y - adjusted_y) + 100
+                            adjusted_height = min(adjusted_height, page_height - adjusted_y)
+
+                            horizontal_expansion = 30
+                            adjusted_x = max(0, x - horizontal_expansion)
+                            adjusted_width = width + (x - adjusted_x) + horizontal_expansion
+                            adjusted_width = min(adjusted_width, page_width - adjusted_x)
+
+                            logger.info(
+                                f"[DEBUG] EMERGENCY adjustment for {fig_id}: "
+                                f"Original: x={x}, y={y}, w={width}, h={height} | "
+                                f"Adjusted: x={adjusted_x}, y={adjusted_y}, w={adjusted_width}, h={adjusted_height} | "
+                                f"Expansions: up={upward_expansion}px, down=100px, horizontal={horizontal_expansion}px"
+                            )
+
+                            x = adjusted_x
+                            y = adjusted_y
+                            width = adjusted_width
+                            height = adjusted_height
+                            adjustment_applied = True
+
+                    # 表（table）の特別処理
+                    elif fig_type == 'table' and y > 300:
+                        logger.info(f"[DEBUG] {fig_id} identified as TABLE with y={y} > 300 - applying table adjustment")
+                        table_expansion = 100  # 表の場合は100ピクセル拡張（50から増加）
+                        adjusted_y = max(0, y - table_expansion)
+                        adjusted_height = height + (y - adjusted_y) + 30  # 下にも30px追加
+                        adjusted_height = min(adjusted_height, page_height - adjusted_y)
+
+                        logger.info(
+                            f"[DEBUG] Table adjustment for {fig_id}: "
+                            f"y: {y} -> {adjusted_y}, height: {height} -> {adjusted_height}"
+                        )
+
+                        y = adjusted_y
+                        height = adjusted_height
+                        adjustment_applied = True
+                    else:
+                        logger.info(f"[DEBUG] {fig_id} - No adjustment needed (type={fig_type}, y={y})")
+
+                    # 調整結果の確認ログ
+                    if adjustment_applied:
+                        logger.info(
+                            f"[DEBUG] {fig_id} - COORDINATE ADJUSTMENT SUMMARY: "
+                            f"x: {original_x} -> {x} (delta={original_x-x}), "
+                            f"y: {original_y} -> {y} (delta={original_y-y}), "
+                            f"width: {original_width} -> {width} (delta={width-original_width}), "
+                            f"height: {original_height} -> {height} (delta={height-original_height})"
+                        )
+
                     # 座標情報をログ出力
                     logger.debug(
                         f"Processing figure: page={page_num}, fig={fig_id}, "
@@ -142,6 +273,16 @@ class PDFImageExtractor:
                         f"bbox=({bbox.x0:.0f}, {bbox.y0:.0f}, {bbox.x1:.0f}, {bbox.y1:.0f}), "
                         f"file_size={len(img_data)} bytes"
                     )
+
+                    # デバッグ：特定の図表の抽出結果を詳細に記録
+                    if 'page_5' in filename or 'fig_2' in filename:
+                        logger.info(
+                            f"[DEBUG] SPECIAL ATTENTION - {filename}: "
+                            f"Final extraction bbox: x0={bbox.x0:.0f}, y0={bbox.y0:.0f}, "
+                            f"x1={bbox.x1:.0f}, y1={bbox.y1:.0f}, "
+                            f"size={bbox.x1-bbox.x0:.0f}x{bbox.y1-bbox.y0:.0f}px, "
+                            f"adjustment_applied={'YES (aggressive)' if adjustment_applied else 'NO'}"
+                        )
 
                     # 正規化座標を計算（0.0 - 1.0）
                     normalized_bbox = [

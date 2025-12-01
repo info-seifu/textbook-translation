@@ -50,7 +50,44 @@ class PDFGenerator:
             }
 
             body {
+                font-size: 10pt;  /* 11pt -> 10pt に縮小 */
+                line-height: 1.4;  /* 行間を狭く（デフォルトは1.6程度） */
+            }
+
+            /* 見出しのフォントサイズを調整 */
+            h1 {
+                font-size: 16pt;  /* より控えめなサイズに */
+                margin-top: 0.8em;
+                margin-bottom: 0.5em;
+                line-height: 1.2;
+            }
+
+            h2 {
+                font-size: 14pt;  /* Level 2相当のサイズ */
+                margin-top: 0.7em;
+                margin-bottom: 0.4em;
+                line-height: 1.2;
+            }
+
+            h3 {
+                font-size: 12pt;
+                margin-top: 0.6em;
+                margin-bottom: 0.3em;
+                line-height: 1.2;
+            }
+
+            h4, h5, h6 {
                 font-size: 11pt;
+                margin-top: 0.5em;
+                margin-bottom: 0.3em;
+                line-height: 1.2;
+            }
+
+            /* 段落の行間を調整 */
+            p {
+                margin-top: 0.4em;
+                margin-bottom: 0.4em;
+                line-height: 1.4;  /* 行間を狭く */
             }
 
             /* ページ区切り制御 */

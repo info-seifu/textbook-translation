@@ -46,6 +46,25 @@ class GeminiOCRService:
             各ページのOCR結果リスト
         """
 
+        # PDFの各ページサイズを取得
+        import fitz
+        page_dimensions = {}
+        try:
+            pdf_doc = fitz.open(pdf_path)
+            for page_num in range(pdf_doc.page_count):
+                page = pdf_doc[page_num]
+                page_dimensions[page_num + 1] = {
+                    'width': page.rect.width,
+                    'height': page.rect.height
+                }
+                logger.info(
+                    f"Page {page_num + 1} dimensions: "
+                    f"{page.rect.width:.1f}x{page.rect.height:.1f}"
+                )
+            pdf_doc.close()
+        except Exception as e:
+            logger.warning(f"Failed to get page dimensions: {e}")
+
         # プロンプト構築
         prompt = self._build_ocr_prompt()
 
@@ -77,8 +96,8 @@ class GeminiOCRService:
                 )
             )
 
-            # 結果パース
-            results = self._parse_multi_page_response(response.text)
+            # 結果パース（ページサイズ情報を渡す）
+            results = self._parse_multi_page_response(response.text, page_dimensions)
             logger.info(f"OCR completed for {len(results)} pages")
 
             return results
@@ -238,7 +257,7 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
    PDFの全ページを処理し、pages配列に含めること
 """
 
-    def _parse_multi_page_response(self, response_text: str) -> List[OCRResult]:
+    def _parse_multi_page_response(self, response_text: str, page_dimensions: dict = None) -> List[OCRResult]:
         """Gemini応答をパース（複数ページ対応）"""
 
         # JSONブロックを抽出
@@ -256,19 +275,22 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
         # 各ページをパース
         results = []
         for page_data in data.get('pages', []):
-            result = self._parse_page_data(page_data)
+            page_num = page_data.get('page_number', 1)
+            # 該当ページのサイズを取得（存在しない場合はA4サイズをデフォルト）
+            page_size = page_dimensions.get(page_num, {'width': 595, 'height': 842}) if page_dimensions else {'width': 595, 'height': 842}
+            result = self._parse_page_data(page_data, page_size)
             results.append(result)
 
         return results
 
-    def _parse_page_data(self, page_data: dict) -> OCRResult:
+    def _parse_page_data(self, page_data: dict, page_size: dict = None) -> OCRResult:
         """1ページ分のデータをパース"""
 
         # FigureDataリストの構築
         figures = []
         for fig_data in page_data.get('figures', []):
-            # 座標検証と調整
-            validated_fig_data = self._validate_and_adjust_figure(fig_data)
+            # 座標検証と調整（ページサイズ情報を渡す）
+            validated_fig_data = self._validate_and_adjust_figure(fig_data, page_size)
 
             position = FigurePosition(**validated_fig_data['position'])
             figure = FigureData(
@@ -298,12 +320,13 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
             detected_writing_mode=page_data['detected_writing_mode']
         )
 
-    def _validate_and_adjust_figure(self, fig_data: dict) -> dict:
+    def _validate_and_adjust_figure(self, fig_data: dict, page_size: dict = None) -> dict:
         """
         図表座標の検証と調整
 
         Args:
             fig_data: 図表データ
+            page_size: ページサイズ情報 {'width': xxx, 'height': xxx}
 
         Returns:
             検証・調整済みの図表データ
@@ -315,6 +338,22 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
         height = position.get('height', 0)
         fig_type = fig_data.get('type', '')
         description = fig_data.get('description', '')
+        fig_id = fig_data.get('id', '')
+
+        # ページサイズ取得（なければA4サイズをデフォルト）
+        if page_size:
+            page_width = page_size['width']
+            page_height = page_size['height']
+        else:
+            page_width = 595  # A4縦
+            page_height = 842
+
+        # デバッグログ：Geminiから返された元の座標を記録
+        logger.info(
+            f"[Figure {fig_id}] Original coordinates from Gemini: "
+            f"x={x}, y={y}, width={width}, height={height}, "
+            f"page_size={page_width}x{page_height}, type={fig_type}"
+        )
 
         # 座標の基本検証
         if width < 20 or height < 20:
@@ -324,21 +363,91 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
                 f"description={description[:50]}"
             )
 
-        # アローダイアグラム・フローチャートの特別処理
+        # アローダイアグラム・フローチャートの特別処理（フォールバック戦略）
         if fig_type == 'diagram' or 'ダイアグラム' in description or 'arrow' in description.lower():
-            # 高さが異常に小さい場合、上方向に拡張
-            if height < 200:
-                # y座標を上方向に100ピクセル拡張
-                adjusted_y = max(0, y - 100)
-                adjusted_height = height + (y - adjusted_y)
+            # ダイアグラムは上部が切れやすいので、Geminiの検出精度に応じた対応
+
+            # 【フォールバック戦略】
+            # Geminiがy座標を極端に間違えている場合（y > 600 = ページの70%以上）
+            # これは確実に誤検出なので、ページ上部から抽出する
+            if y > 600:
+                logger.warning(
+                    f"[Figure {fig_id}] CRITICAL: Diagram detected at extreme bottom position (y={y}). "
+                    f"This is likely a Gemini mis-detection. Applying FALLBACK strategy: "
+                    f"Setting y=0 and using full upper page."
+                )
+                # ページ上半分全体を対象にする（y=0から元の高さ + 元のy座標まで）
+                adjusted_y = 0
+                # 元の図の下端を維持しつつ、上部を0から開始
+                adjusted_height = min(y + height + 50, page_height)  # 下に50px余裕追加
 
                 logger.info(
-                    f"Adjusting diagram bounding box: "
+                    f"[Figure {fig_id}] FALLBACK adjustment: "
                     f"y {y} -> {adjusted_y}, height {height} -> {adjusted_height}"
                 )
 
                 fig_data['position']['y'] = adjusted_y
                 fig_data['position']['height'] = adjusted_height
+                y = adjusted_y
+                height = adjusted_height
+
+            # ページ中央付近の図（y座標が400-600）- 上部が切れている可能性大
+            elif y > 400:
+                # より積極的な拡張：元のy座標の70%を上方拡張
+                expansion = int(y * 0.7)  # y=450なら315px上方拡張
+                adjusted_y = max(0, y - expansion)
+                adjusted_height = height + (y - adjusted_y) + 100  # さらに下に100px余裕追加
+
+                logger.warning(
+                    f"[Figure {fig_id}] Diagram starts mid-page (y={y}), likely missing top nodes. "
+                    f"Applying AGGRESSIVE expansion: {expansion}px upward"
+                )
+                logger.info(
+                    f"[Figure {fig_id}] Mid-page diagram adjustment: "
+                    f"y {y} -> {adjusted_y}, height {height} -> {adjusted_height}, "
+                    f"expansion={expansion}px"
+                )
+
+                fig_data['position']['y'] = adjusted_y
+                fig_data['position']['height'] = adjusted_height
+                y = adjusted_y
+                height = adjusted_height
+
+            # 高さが不十分な場合
+            elif height < 400:
+                expansion = max(200, 400 - height)
+                adjusted_y = max(0, y - expansion)
+                adjusted_height = height + (y - adjusted_y) + 100  # 下にも余裕追加
+
+                logger.info(
+                    f"[Figure {fig_id}] Small diagram detected (height={height}). "
+                    f"Expanding: y {y} -> {adjusted_y}, height {height} -> {adjusted_height}"
+                )
+
+                fig_data['position']['y'] = adjusted_y
+                fig_data['position']['height'] = adjusted_height
+                y = adjusted_y
+                height = adjusted_height
+
+        # 表（table）の特別処理
+        if fig_type == 'table' and y > 350:
+            # 表も上部（ヘッダー行）が切れやすいので、上方向に拡張
+            table_expansion = 50  # 表の場合は控えめに50ピクセル拡張
+
+            adjusted_y = max(0, y - table_expansion)
+            adjusted_height = height + (y - adjusted_y)
+
+            logger.info(
+                f"[Figure {fig_id}] Adjusting table bounding box: "
+                f"y {y} -> {adjusted_y}, height {height} -> {adjusted_height}"
+            )
+
+            fig_data['position']['y'] = adjusted_y
+            fig_data['position']['height'] = adjusted_height
+
+            # 調整後の値を更新
+            y = adjusted_y
+            height = adjusted_height
 
         # アスペクト比の検証
         if width > 0 and height > 0:
@@ -349,10 +458,67 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
                     f"for {fig_type} ({width}x{height})"
                 )
 
-        # 座標が負の値でないことを確認
-        fig_data['position']['x'] = max(0, x)
-        fig_data['position']['y'] = max(0, y)
-        fig_data['position']['width'] = max(1, width)
-        fig_data['position']['height'] = max(1, height)
+        # Geminiが返す座標がページサイズを超える場合の調整
+        # Geminiは時々間違った座標（特にx2, y2）を返すことがある
+
+        # x座標とwidthの調整
+        if x + width > page_width:
+            # 右端がページ幅を超える場合
+            original_width = width
+
+            # ケース1: x座標は正しいが幅が大きすぎる（Geminiがx2を間違えた）
+            if x < page_width * 0.9:  # x座標がページの90%以内なら有効と判断
+                # 幅をページ内に収める（int型に変換）
+                adjusted_width = int(page_width - x - 10)  # 10ピクセルの余白
+                logger.warning(
+                    f"[Figure {fig_id}] Width exceeds page bounds - adjusting: "
+                    f"width {original_width} -> {adjusted_width} "
+                    f"(x={x}, x+width={x+original_width}, page_width={page_width})"
+                )
+                width = adjusted_width
+            else:
+                # ケース2: x座標自体が無効
+                logger.warning(f"[Figure {fig_id}] X coordinate exceeds page bounds: {x} -> 0")
+                x = 0
+                width = int(min(original_width, page_width - 20))  # ページ幅から余白を引いた値（int型）
+
+        # y座標とheightの調整
+        if y + height > page_height:
+            # 下端がページ高さを超える場合
+            original_height = height
+
+            if y < page_height * 0.9:  # y座標がページの90%以内なら有効と判断
+                # 高さをページ内に収める（int型に変換）
+                adjusted_height = int(page_height - y - 10)  # 10ピクセルの余白
+                logger.warning(
+                    f"[Figure {fig_id}] Height exceeds page bounds - adjusting: "
+                    f"height {original_height} -> {adjusted_height} "
+                    f"(y={y}, y+height={y+original_height}, page_height={page_height})"
+                )
+                height = adjusted_height
+            else:
+                # y座標自体が無効
+                logger.warning(f"[Figure {fig_id}] Y coordinate exceeds page bounds: {y} -> 0")
+                y = 0
+                height = int(min(original_height, page_height - 20))  # int型に変換
+
+        # 座標が負の値でないことを確認し、int型に変換
+        fig_data['position']['x'] = int(max(0, x))
+        fig_data['position']['y'] = int(max(0, fig_data['position'].get('y', y)))  # 調整済みの値を使用
+        fig_data['position']['width'] = int(max(1, width))
+        fig_data['position']['height'] = int(max(1, fig_data['position'].get('height', height)))  # 調整済みの値を使用
+
+        # 最終的な座標をログ出力（変更があった場合）
+        final_x = fig_data['position']['x']
+        final_y = fig_data['position']['y']
+        final_width = fig_data['position']['width']
+        final_height = fig_data['position']['height']
+
+        if (final_x != position.get('x', 0) or final_y != position.get('y', 0) or
+                final_width != position.get('width', 0) or final_height != position.get('height', 0)):
+            logger.info(
+                f"[Figure {fig_id}] Final adjusted coordinates: "
+                f"x={final_x}, y={final_y}, width={final_width}, height={final_height}"
+            )
 
         return fig_data
