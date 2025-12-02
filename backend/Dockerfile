@@ -20,6 +20,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 # システムパッケージの更新とWeasyPrint依存関係のインストール
 # WeasyPrintにはCairo、Pango、GDK-PixBuf等が必要
+# LayoutLMv3/LayoutParserにはOpenCV関連ライブラリが必要
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # WeasyPrint依存関係
     libcairo2 \
@@ -30,6 +31,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     shared-mime-info \
     # PDF2Image依存関係 (Poppler)
     poppler-utils \
+    # LayoutLMv3/Detectron2依存関係
+    # LayoutParser内部でDetectron2が使用され、それがOpenCVを必要とする
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
     # 一般的なツール
     curl \
     && rm -rf /var/lib/apt/lists/*
