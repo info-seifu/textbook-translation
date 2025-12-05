@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getJobStatus, startTranslation, downloadMarkdown, downloadHTML, downloadPDF } from '@/lib/api'
+import { getJobStatus, startTranslation, downloadMarkdown, downloadHTML, downloadPDF, downloadDocx } from '@/lib/api'
 
 interface Job {
   id: string
@@ -90,7 +90,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `translated_${language}.md`
+      a.download = `translated_${language}_markdown.zip`
       a.click()
       window.URL.revokeObjectURL(url)
     } catch (err) {
@@ -105,7 +105,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `translated_${language}.html`
+      a.download = `translated_${language}_html.zip`
       a.click()
       window.URL.revokeObjectURL(url)
     } catch (err) {
@@ -126,6 +126,21 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
     } catch (err) {
       console.error('PDF download failed:', err)
       alert('PDFのダウンロードに失敗しました')
+    }
+  }
+
+  const handleDownloadDocx = async (outputId: string, language: string) => {
+    try {
+      const blob = await downloadDocx(outputId)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `translated_${language}.docx`
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Docx download failed:', err)
+      alert('Docxのダウンロードに失敗しました')
     }
   }
 
@@ -314,6 +329,12 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
                         >
                           PDF
+                        </button>
+                        <button
+                          onClick={() => handleDownloadDocx(translation.id, translation.target_language)}
+                          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
+                        >
+                          Docx
                         </button>
                       </div>
                     )}

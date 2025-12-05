@@ -5,6 +5,9 @@ Markdownをレイアウト付きHTMLに変換
 import markdown
 from typing import Optional, Dict, Any
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class HTMLGenerator:
@@ -120,14 +123,21 @@ class HTMLGenerator:
         # 例: ![図1](figures/page1_fig1.png) -> 実際のローカルパス
         pattern = r'<img alt="([^"]*)" src="(figures/[^"]+)"'
 
+        image_count = 0
+
         def replace_path(match):
+            nonlocal image_count
+            image_count += 1
             alt_text = match.group(1)
             rel_path = match.group(2)
             # ローカルストレージのパスに変換
             full_path = f"/api/figures/{job_id}/{rel_path}"
+            logger.info(f"HTML: Converting image path: {rel_path} -> {full_path}")
             return f'<img alt="{alt_text}" src="{full_path}"'
 
-        return re.sub(pattern, replace_path, html_content)
+        result = re.sub(pattern, replace_path, html_content)
+        logger.info(f"HTML image path adjustment complete: {image_count} images converted")
+        return result
 
     def _generate_css(
         self,
@@ -178,9 +188,10 @@ class HTMLGenerator:
             font-weight: bold;
         }
 
-        h1 { font-size: 2em; }
-        h2 { font-size: 1.5em; }
-        h3 { font-size: 1.3em; }
+        h1 { font-size: 14pt; }
+        h2 { font-size: 12pt; }
+        h3 { font-size: 11pt; }
+        h4 { font-size: 11pt; }
 
         p {
             margin-bottom: 1em;
@@ -230,6 +241,22 @@ class HTMLGenerator:
             padding-left: 1em;
             margin: 1em 0;
             color: #666;
+        }
+
+        /* リストスタイル - 選択肢の間隔を広げる */
+        ul, ol {
+            margin: 1em 0;
+            padding-left: 2em;
+        }
+
+        li {
+            margin-bottom: 0.8em;
+            line-height: 1.6;
+        }
+
+        /* 選択肢リストの特別なスタイル（Answer Choices用） */
+        p + ul, p + ol {
+            margin-top: 0.5em;
         }
         """
 
