@@ -2,6 +2,18 @@
 OCRオーケストレーター
 PDF全体のOCR処理を管理
 """
+from typing import List
+import asyncio
+import os
+import logging
+from concurrent.futures import ThreadPoolExecutor
+from app.services.gemini_ocr_service import GeminiOCRService
+from app.services.layoutlmv3_detector import LayoutLMv3Detector
+from app.services.figure_integrator import FigureIntegrator, PagedFigureData
+from app.services.pdf_image_extractor import PDFImageExtractor
+from app.models.schemas import OCRResult, FigureData
+
+logger = logging.getLogger(__name__)
 from typing import List, Dict, Tuple
 import json
 import re
@@ -19,6 +31,11 @@ class OCROrchestrator:
         self.db_client = db_client
         self.image_extractor = PDFImageExtractor()
 
+        # LayoutLMv3 ハイブリッド検出の設定
+        self.layoutlmv3_enabled = os.getenv("LAYOUTLMV3_ENABLED", "true").lower() == "true"
+        self.layoutlmv3_detector = LayoutLMv3Detector() if self.layoutlmv3_enabled else None
+        self.figure_integrator = FigureIntegrator() if self.layoutlmv3_enabled else None
+        self.executor = ThreadPoolExecutor(max_workers=2)
     @staticmethod
     def _has_heading_at_start(markdown_text: str) -> bool:
         """
@@ -74,6 +91,13 @@ class OCROrchestrator:
         # 1. PDFを直接Geminiに送信してOCR処理
         ocr_results = await self.gemini.extract_from_pdf(pdf_path)
         page_count = len(ocr_results)
+
+        # 1.5. LayoutLMv3 ハイブリッド検出
+        if self.layoutlmv3_enabled and self.layoutlmv3_detector:
+            try:
+                ocr_results = await self._apply_hybrid_detection(pdf_path, ocr_results)
+            except Exception as e:
+                logger.warning(f"Hybrid detection failed, using Gemini-only results: {e}")
 
         # ページ数をDBに記録
         self.db_client.table('translation_jobs').update({
@@ -334,3 +358,201 @@ class OCROrchestrator:
             'japanese_markdown_url': markdown_url,
             'ocr_status': 'completed'
         }).eq('id', job_id).execute()
+
+    async def _apply_hybrid_detection(
+        self,
+        pdf_path: str,
+        ocr_results: List[OCRResult]
+    ) -> List[OCRResult]:
+        """
+        LayoutLMv3ハイブリッド検出を適用
+
+        Args:
+            pdf_path: PDFファイルパス
+            ocr_results: Gemini OCRの結果
+
+        Returns:
+            ハイブリッド検出結果で更新されたOCR結果
+        """
+        logger.info("Starting LayoutLMv3 hybrid detection")
+
+        # LayoutLMv3で図表を検出
+        loop = asyncio.get_event_loop()
+        detector_figures = await loop.run_in_executor(
+            self.executor,
+            self._run_layoutlmv3_detection,
+            pdf_path
+        )
+
+        # Gemini図表をPagedFigureDataに変換
+        gemini_figures = []
+        for result in ocr_results:
+            for fig in result.figures:
+                gemini_figures.append(
+                    PagedFigureData(page=result.page_number, figure=fig)
+                )
+
+        # 図表を統合
+        integrated_figures = self.figure_integrator.integrate_figures(
+            gemini_figures=gemini_figures,
+            detector_figures=detector_figures,
+            fallback_enabled=True
+        )
+
+        # OCR結果を更新
+        for result in ocr_results:
+            # 該当ページの統合図表を取得
+            page_integrated = [
+                fig for fig in integrated_figures
+                if fig.page == result.page_number
+            ]
+
+            # FigureDataに変換して更新
+            result.figures = []
+            for idx, int_fig in enumerate(page_integrated):
+                # 一意のIDを生成（ページ番号 * 1000 + インデックス）
+                figure_id = result.page_number * 1000 + idx
+                result.figures.append(FigureData(
+                    id=figure_id,
+                    type=int_fig.type,  # 既にfigure_integratorで変換済み
+                    position=int_fig.position,
+                    description=int_fig.description
+                ))
+
+        logger.info(
+            f"Hybrid detection completed: {len(integrated_figures)} total figures"
+        )
+        return ocr_results
+
+    def _run_layoutlmv3_detection(self, pdf_path: str):
+        """
+        LayoutLMv3検出を実行（同期処理）
+
+        Args:
+            pdf_path: PDFファイルパス
+
+        Returns:
+            検出された図表のリスト
+        """
+        return self.layoutlmv3_detector.detect_figures(pdf_path)
+
+    async def _extract_figures(
+        self,
+        job_id: str,
+        pdf_path: str,
+        ocr_results: List[OCRResult]
+    ) -> dict:
+        """
+        検出された図表を画像として抽出し、Storageに保存
+
+        Args:
+            job_id: ジョブID
+            pdf_path: PDFファイルパス
+            ocr_results: OCR結果（図表情報を含む）
+
+        Returns:
+            図表メタデータ
+        """
+        logger.info("Extracting figures as images")
+
+        # 一時ディレクトリを作成
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # 全図表を収集
+            all_figures = []
+            for result in ocr_results:
+                for fig in result.figures:
+                    all_figures.append({
+                        'page': result.page_number,
+                        'figure': fig,
+                        'x': int(fig.position.x),
+                        'y': int(fig.position.y),
+                        'width': int(fig.position.width),
+                        'height': int(fig.position.height)
+                    })
+
+            # 画像として抽出
+            extracted_count = 0
+            if all_figures:
+                extracted_images = self.image_extractor.extract_figure_images(
+                    pdf_path=pdf_path,
+                    figures=all_figures,
+                    output_dir=temp_dir
+                )
+
+                # Gemini検証を有効にする場合はここで検証
+                logger.info(f"Starting Gemini verification for {len(extracted_images)} extracted figures")
+                verified_images = []
+                for idx, (img_path, fig_info) in enumerate(extracted_images):
+                    page_num = fig_info['page']
+                    logger.info(f"[{idx+1}/{len(extracted_images)}] Verifying figure on page {page_num}: {img_path}")
+
+                    # Geminiで画像を検証（事後検証方式）
+                    try:
+                        verification_result = await self.gemini.verify_figure_image(img_path)
+                        logger.info(f"Gemini verification result: {verification_result}")
+
+                        # is_figureがTrueで、かつconfidenceが0.5以上の場合のみ保持
+                        if verification_result.get('is_figure', False) and \
+                           verification_result.get('confidence', 0) >= 0.5:
+                            verified_images.append((img_path, fig_info))
+                            logger.info(
+                                f"✓ Page {page_num}: Figure VERIFIED as "
+                                f"{verification_result.get('type', 'unknown')} "
+                                f"(confidence={verification_result.get('confidence', 0):.2f})"
+                            )
+                        else:
+                            logger.info(
+                                f"✗ Page {page_num}: Figure REJECTED by Gemini - "
+                                f"{verification_result.get('reason', 'Unknown reason')} "
+                                f"(is_figure={verification_result.get('is_figure')}, "
+                                f"confidence={verification_result.get('confidence', 0):.2f})"
+                            )
+                    except Exception as e:
+                        logger.error(f"ERROR verifying figure on page {page_num}: {type(e).__name__}: {e}")
+                        logger.warning(f"Keeping figure anyway due to verification error")
+                        verified_images.append((img_path, fig_info))
+
+                logger.info(f"Gemini verification completed: {len(verified_images)}/{len(extracted_images)} figures kept")
+
+                # Storageにアップロード（検証済みの画像のみ）
+                for img_path, fig_info in verified_images:
+                    page_num = fig_info['page']
+                    fig_id = fig_info['figure'].id
+
+                    storage_path = f"{job_id}/figures/page{page_num}_{fig_id}.png"
+
+                    with open(img_path, 'rb') as f:
+                        self.db_client.storage.from_('documents').upload(
+                            storage_path,
+                            f.read(),
+                            {'content-type': 'image/png'}
+                        )
+
+                    extracted_count += 1
+
+            logger.info(f"Extracted {extracted_count} figure images (after Gemini verification)")
+
+            # メタデータを作成
+            figures_metadata = {
+                'total_figures': len(all_figures),
+                'extracted_count': extracted_count,
+                'pages': []
+            }
+
+            for page_num in range(1, len(ocr_results) + 1):
+                page_figures = [f for f in all_figures if f['page'] == page_num]
+                figures_metadata['pages'].append({
+                    'page_number': page_num,
+                    'figure_count': len(page_figures),
+                    'figures': [
+                        {
+                            'id': f['figure'].id,
+                            'type': f['figure'].type,
+                            'description': f['figure'].description
+                        }
+                        for f in page_figures
+                    ]
+                })
+
+            return figures_metadata

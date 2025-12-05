@@ -164,3 +164,17 @@ export async function downloadPDF(outputId: string): Promise<Blob> {
 
   return response.blob()
 }
+
+/**
+ * Docxファイルをダウンロード
+ */
+export async function downloadDocx(outputId: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/api/download/${outputId}/docx`)
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to download Docx')
+  }
+
+  return response.blob()
+}

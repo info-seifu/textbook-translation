@@ -320,6 +320,90 @@ PDFの各ページについて、以下のJSON配列形式で出力してくだ�
             detected_writing_mode=page_data['detected_writing_mode']
         )
 
+    @async_retry(
+        max_retries=2,
+        base_delay=1.0,
+        max_delay=30.0,
+        exceptions=(Exception,),
+        rate_limit_exceptions=(APIRateLimitException,)
+    )
+    async def verify_figure_image(self, image_path: str) -> dict:
+        """
+        抽出された画像が実際に図表かどうかをGeminiで検証
+
+        Args:
+            image_path: 検証する画像のパス
+
+        Returns:
+            {
+                "is_figure": bool,  # 図表かどうか
+                "type": str or None,  # 図表の種類 (table, diagram, graph, illustrationなど)
+                "confidence": float,  # 信頼度 (0.0-1.0)
+                "reason": str  # 判断理由
+            }
+        """
+        prompt = """この画像を見て、以下の質問に答えてください:
+
+1. これは図表（グラフ、表、ダイアグラム、フローチャート、イラストなど）ですか？
+2. もし図表であれば、どのタイプですか？
+
+回答は以下のJSON形式のみで返してください（説明文は不要）:
+{
+  "is_figure": true/false,
+  "type": "table" / "diagram" / "graph" / "illustration" / "photo" / null,
+  "confidence": 0.0-1.0,
+  "reason": "判断理由（1文で簡潔に）"
+}
+
+注意:
+- 通常のテキスト、選択肢、問題文、空白ページなどは図表ではありません
+- 表やグラフ、ダイアグラムなど明確な図表要素がある場合のみis_figure=trueとしてください
+"""
+
+        try:
+            # 画像を読み込んでbase64エンコード
+            with open(image_path, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            # Gemini APIに送信
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=[
+                    types.Part(text=prompt),
+                    types.Part(
+                        inline_data=types.Blob(
+                            mime_type="image/png",
+                            data=image_data
+                        )
+                    )
+                ],
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    response_mime_type="application/json"
+                )
+            )
+
+            # レスポンスをパース
+            result_text = response.text.strip()
+
+            # JSONパース
+            result = json.loads(result_text)
+
+            logger.debug(f"Figure verification result for {image_path}: {result}")
+            return result
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse Gemini verification response: {e}")
+            # パースに失敗した場合はデフォルト値を返す
+            return {
+                "is_figure": False,
+                "type": None,
+                "confidence": 0.0,
+                "reason": "Failed to parse response"
+            }
+        except Exception as e:
+            logger.error(f"Error verifying figure image {image_path}: {e}")
+            raise
     def _validate_and_adjust_figure(self, fig_data: dict, page_size: dict = None) -> dict:
         """
         図表座標の検証と調整
