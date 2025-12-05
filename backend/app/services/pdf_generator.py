@@ -35,20 +35,70 @@ class PDFGenerator:
         # HTMLオブジェクトを作成
         html_obj = HTML(string=html_content, base_url=base_url)
 
-        # 追加のCSS（PDF最適化用）
+        # 追加のCSS（PDF最適化用、Phase 4拡張）
         pdf_css = CSS(string="""
             @page {
                 size: A4;
                 margin: 20mm;
+
+                /* Phase 4: フッターにページ番号を表示 */
+                @bottom-center {
+                    content: counter(page);
+                    font-size: 10pt;
+                    color: #666;
+                }
             }
 
             body {
+                font-size: 10pt;  /* 11pt -> 10pt に縮小 */
+                line-height: 1.4;  /* 行間を狭く（デフォルトは1.6程度） */
+            }
+
+            /* 見出しのフォントサイズを調整 */
+            h1 {
+                font-size: 16pt;  /* より控えめなサイズに */
+                margin-top: 0.8em;
+                margin-bottom: 0.5em;
+                line-height: 1.2;
+            }
+
+            h2 {
+                font-size: 14pt;  /* Level 2相当のサイズ */
+                margin-top: 0.7em;
+                margin-bottom: 0.4em;
+                line-height: 1.2;
+            }
+
+            h3 {
+                font-size: 12pt;
+                margin-top: 0.6em;
+                margin-bottom: 0.3em;
+                line-height: 1.2;
+            }
+
+            h4, h5, h6 {
                 font-size: 11pt;
+                margin-top: 0.5em;
+                margin-bottom: 0.3em;
+                line-height: 1.2;
+            }
+
+            /* 段落の行間を調整 */
+            p {
+                margin-top: 0.4em;
+                margin-bottom: 0.4em;
+                line-height: 1.4;  /* 行間を狭く */
             }
 
             /* ページ区切り制御 */
             h1, h2, h3 {
                 page-break-after: avoid;
+            }
+
+            /* Phase 4: 図表の改ページ制御 */
+            .embedded-figure {
+                page-break-inside: avoid;
+                margin: 1.5em 0;
             }
 
             img {
@@ -57,6 +107,20 @@ class PDFGenerator:
 
             table {
                 page-break-inside: avoid;
+            }
+
+            /* 改ページマーカーで必ず改ページ（PDF出力時は非表示） */
+            .page-break-marker {
+                page-break-before: always;
+                display: none; /* PDF出力時は完全に非表示 */
+                margin: 0;
+                height: 0;
+            }
+
+            /* 孤立行・未亡人行の防止 */
+            p {
+                orphans: 3;
+                widows: 3;
             }
         """)
 
@@ -104,14 +168,14 @@ class PDFGenerator:
             job_id
         )
 
-        # PDF生成用に画像URLをファイルパスに変換または削除
+        # Phase 4: PDF生成用に画像URLをファイルパスに変換
         if job_id:
             import re
             from pathlib import Path
             import logging
             logger = logging.getLogger(__name__)
 
-            # storage/documents/{job_id}/figures/ の構造
+            # uploads/{job_id}/figures/ の構造
             # 絶対パスに変換
             storage_dir = Path("storage").resolve() / "documents" / job_id / "figures"
             logger.info(f"PDF generation: Looking for images in {storage_dir}")
@@ -125,12 +189,14 @@ class PDFGenerator:
                 nonlocal image_count, found_count, missing_count
                 image_count += 1
                 full_tag = match.group(0)
+                logger.debug(f"Processing img tag: {full_tag[:100]}...")
                 src_match = re.search(r'src="(/api/figures/[^"]+)"', full_tag)
                 if src_match:
                     api_url = src_match.group(1)
-                    # /api/figures/{job_id}/figures/page1_fig1.png → page1_fig1.png
+                    # /api/figures/{job_id}/figures/page_1_fig_1.png → page_1_fig_1.png
                     filename = api_url.split('/')[-1]
                     file_path = storage_dir / filename
+                    logger.info(f"Checking figure: {filename} at {file_path}")
                     if file_path.exists():
                         # file:// URLに変換（絶対パス）
                         file_url = file_path.as_uri()
@@ -146,6 +212,7 @@ class PDFGenerator:
                 logger.warning(f"✗ Could not parse image src from: {full_tag}")
                 return ''
 
+            # Phase 4: figure要素内のimg要素も処理
             html_content = re.sub(r'<img[^>]+>', replace_img_url, html_content)
             logger.info(f"PDF image processing complete: {image_count} total, {found_count} found, {missing_count} missing")
 

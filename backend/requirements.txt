@@ -16,6 +16,10 @@ pydyf==0.10.0
 jinja2==3.1.2
 python-docx==1.1.0
 
+# PDF image extraction
+PyMuPDF==1.23.26
+Pillow>=10.0.0
+
 # For testing
 pytest==7.4.3
 pytest-asyncio==0.21.1

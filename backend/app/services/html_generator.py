@@ -110,7 +110,7 @@ class HTMLGenerator:
 
     def _adjust_image_paths(self, html_content: str, job_id: str) -> str:
         """
-        図解のパスをローカルストレージのパスに調整
+        図解のパスをローカルストレージのパスに調整し、figure要素で囲む（Phase 3）
 
         Args:
             html_content: HTML文字列
@@ -119,25 +119,29 @@ class HTMLGenerator:
         Returns:
             パス調整済みHTML
         """
-        # Markdown形式の画像参照を検出して調整
-        # 例: ![図1](figures/page1_fig1.png) -> 実際のローカルパス
-        pattern = r'<img alt="([^"]*)" src="(figures/[^"]+)"'
+        # Phase 3: 画像をfigure要素で囲む
+        # 例: <img alt="図1" src="figures/page_1_fig_1.png" />
+        # -> <figure class="embedded-figure">
+        #      <img src="/api/figures/{job_id}/figures/page_1_fig_1.png" alt="図1">
+        #      <figcaption>図1</figcaption>
+        #    </figure>
+        pattern = r'<img alt="([^"]*)" src="(figures/[^"]+)" ?/?>'
 
-        image_count = 0
-
-        def replace_path(match):
-            nonlocal image_count
-            image_count += 1
+        def replace_with_figure(match):
             alt_text = match.group(1)
             rel_path = match.group(2)
-            # ローカルストレージのパスに変換
+            # APIパスに変換
             full_path = f"/api/figures/{job_id}/{rel_path}"
-            logger.info(f"HTML: Converting image path: {rel_path} -> {full_path}")
-            return f'<img alt="{alt_text}" src="{full_path}"'
 
-        result = re.sub(pattern, replace_path, html_content)
-        logger.info(f"HTML image path adjustment complete: {image_count} images converted")
-        return result
+            # figure要素で囲む
+            return (
+                f'<figure class="embedded-figure">\n'
+                f'  <img src="{full_path}" alt="{alt_text}">\n'
+                f'  <figcaption>{alt_text}</figcaption>\n'
+                f'</figure>'
+            )
+
+        return re.sub(pattern, replace_with_figure, html_content)
 
     def _generate_css(
         self,
@@ -193,6 +197,15 @@ class HTMLGenerator:
         h3 { font-size: 11pt; }
         h4 { font-size: 11pt; }
 
+        /* 改ページマーカー（HTMLでは区切り線として表示） */
+        .page-break-marker {
+            display: block;
+            height: 1px;
+            border-top: 1px dotted #ddd;
+            margin: 3em 0 2em 0;
+            page-break-before: auto;
+        }
+
         p {
             margin-bottom: 1em;
         }
@@ -202,6 +215,26 @@ class HTMLGenerator:
             height: auto;
             display: block;
             margin: 1em auto;
+        }
+
+        /* Phase 3: 図表配置 */
+        .embedded-figure {
+            margin: 2rem 0;
+            text-align: center;
+            page-break-inside: avoid;
+        }
+
+        .embedded-figure img {
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto 0.5rem;
+        }
+
+        .embedded-figure figcaption {
+            font-size: 0.9em;
+            color: #666;
+            font-style: italic;
+            margin-top: 0.5rem;
         }
 
         table {
@@ -305,7 +338,7 @@ class HTMLGenerator:
         else:
             font_css = ""
 
-        # 印刷用CSS
+        # 印刷用CSS（Phase 3: 改ページ制御を追加）
         print_css = """
         @media print {
             body {
@@ -319,6 +352,25 @@ class HTMLGenerator:
             @page {
                 size: A4;
                 margin: 20mm;
+            }
+
+            /* Phase 3: セクション単位での改ページ制御 */
+            /* 改ページマーカーで必ず改ページ（印刷時は非表示） */
+            .page-break-marker {
+                page-break-before: always;
+                display: none; /* 印刷時は非表示 */
+                margin: 0;
+                height: 0;
+            }
+
+            /* 図表が分割されないようにする */
+            .embedded-figure {
+                page-break-inside: avoid;
+            }
+
+            /* 大きな見出しの後に改ページが来ないようにする */
+            h1, h2, h3 {
+                page-break-after: avoid;
             }
         }
         """
