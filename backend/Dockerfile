@@ -33,12 +33,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     # LayoutLMv3/Detectron2依存関係
     # LayoutParser内部でDetectron2が使用され、それがOpenCVを必要とする
+    # Detectron2のビルドにはgccとg++が必要
     libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender-dev \
     libgomp1 \
+    gcc \
+    g++ \
+    git \
     # 一般的なツール
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -47,6 +51,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # requirements.txtを先にコピーして、レイヤーキャッシュを活用
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Detectron2を別途インストール（torchが必要なため）
+RUN pip install --no-cache-dir 'git+https://github.com/facebookresearch/detectron2.git@v0.6'
 
 # アプリケーションコードをコピー
 COPY . .

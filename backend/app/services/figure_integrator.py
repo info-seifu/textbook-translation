@@ -14,11 +14,13 @@ from app.services.layoutlmv3_detector import DetectedFigure
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class PagedFigureData:
     """ページ番号付きのFigureData"""
     page: int
     figure: FigureData
+
 
 @dataclass
 class IntegratedFigure:
@@ -41,6 +43,25 @@ class FigureIntegrator:
             position_tolerance: 位置の許容誤差（ピクセル）
         """
         self.position_tolerance = position_tolerance
+
+    def _convert_layoutlmv3_type(self, layoutlmv3_type: str) -> str:
+        """
+        LayoutLMv3の検出タイプをFigureDataの期待する形式に変換
+
+        Args:
+            layoutlmv3_type: LayoutLMv3の検出タイプ ('Figure' or 'Table')
+
+        Returns:
+            FigureDataの期待する形式のタイプ
+        """
+        type_mapping = {
+            'Figure': 'diagram',  # Figureは一般的に図表なのでdiagramにマッピング
+            'Table': 'table',
+            'Text': 'diagram',  # Textが誤検出された場合はdiagramにフォールバック
+            'Title': 'diagram',
+            'List': 'diagram'
+        }
+        return type_mapping.get(layoutlmv3_type, 'diagram')  # デフォルトはdiagram
 
     def integrate_figures(
         self,
@@ -139,8 +160,9 @@ class FigureIntegrator:
                     # （異なるタイプをマッチさせると誤った統合になる）
                     if gemini_fig.type != detector_fig.type:
                         logger.debug(
-                            f"Page {page_num}: Skipping Gemini {gemini_fig.id} (type={gemini_fig.type}) "
-                            f"for LayoutLMv3 figure (type={detector_fig.type}) - type mismatch"
+                            f"Page {page_num}: Skipping Gemini {gemini_fig.id} "
+                            f"(type={gemini_fig.type}) for LayoutLMv3 figure "
+                            f"(type={detector_fig.type}) - type mismatch"
                         )
                         continue
 
@@ -165,66 +187,71 @@ class FigureIntegrator:
                             width=detector_fig.width,
                             height=detector_fig.height
                         ),
-                        type=detector_fig.type,  # LayoutLMv3優先: LayoutLMv3のタイプを使用
+                        type=self._convert_layoutlmv3_type(detector_fig.type),  # LayoutLMv3のタイプを変換
                         description=gemini_fig.description,
                         confidence=0.95,  # ハイブリッドは高信頼度
                         source='hybrid'
                     ))
 
                     logger.debug(
-                        f"Page {page_num}: LayoutLMv3 figure {idx} matched with Gemini {gemini_fig.id} "
-                        f"(score: {best_score:.2f}), using LayoutLMv3 coordinates"
-                    )
-                else:
-                    # Geminiメタデータが見つからない場合はLayoutLMv3単独
-                    integrated.append(IntegratedFigure(
-                        id=f"layoutlmv3_{page_num}_{idx}",
-                        page=page_num,
-                        position=FigurePosition(
-                            x=detector_fig.x,
-                            y=detector_fig.y,
-                            width=detector_fig.width,
-                            height=detector_fig.height
-                        ),
-                        type=detector_fig.type,
-                        description="",  # メタデータなし
-                        confidence=detector_fig.confidence * 0.9,
-                        source='layoutlmv3'
-                    ))
-
-                    logger.debug(
-                        f"Page {page_num}: LayoutLMv3 figure {idx} (no Gemini metadata), "
+                        f"Page {page_num}: LayoutLMv3 figure {idx} matched with "
+                        f"Gemini {gemini_fig.id} (score: {best_score:.2f}), "
                         f"using LayoutLMv3 coordinates"
                     )
+                else:
+                    # Geminiメタデータが見つからない場合
+                    # ただし、Geminiが同じページで少なくとも1つ図表を検出している場合のみ追加
+                    # （Geminiが全く検出していないページのLayoutLMv3検出は誤検出の可能性が高い）
+                    if gemini_figures:
+                        integrated.append(IntegratedFigure(
+                            id=f"layoutlmv3_{page_num}_{idx}",
+                            page=page_num,
+                            position=FigurePosition(
+                                x=detector_fig.x,
+                                y=detector_fig.y,
+                                width=detector_fig.width,
+                                height=detector_fig.height
+                            ),
+                            type=self._convert_layoutlmv3_type(detector_fig.type),  # LayoutLMv3のタイプを変換
+                            description="",  # メタデータなし
+                            confidence=detector_fig.confidence * 0.9,
+                            source='layoutlmv3'
+                        ))
+
+                        logger.debug(
+                            f"Page {page_num}: LayoutLMv3 figure {idx} (no Gemini metadata), "
+                            f"using LayoutLMv3 coordinates"
+                        )
+                    else:
+                        logger.debug(
+                            f"Page {page_num}: Skipping LayoutLMv3 figure {idx} "
+                            f"(Gemini detected nothing on this page - likely false positive)"
+                        )
 
         # LayoutLMv3が検出していないGemini図表をフォールバックとして追加
-        # （LayoutLMv3が何も検出できなかった図表のみ）
-        if fallback_enabled:
+        # Gemini検証で後からフィルタリングされるため、ここでは全て追加
+        # フォールバック無効化: 不要な図表が多く検出されるため
+        if False and fallback_enabled:
             for gemini_idx, paged_fig in enumerate(gemini_figures):
                 if gemini_idx not in used_gemini:
                     gemini_fig = paged_fig.figure
 
-                    # LayoutLMv3が何も検出していない場合のみフォールバック
-                    if not detector_figures:
-                        integrated.append(IntegratedFigure(
-                            id=str(gemini_fig.id),
-                            page=page_num,
-                            position=gemini_fig.position,
-                            type=gemini_fig.type,
-                            description=gemini_fig.description,
-                            confidence=0.7,  # Geminiのみは低信頼度
-                            source='gemini'
-                        ))
+                    # LayoutLMv3が検出しなかったGemini図表を追加
+                    # （Gemini検証で後から精度チェックされる）
+                    integrated.append(IntegratedFigure(
+                        id=str(gemini_fig.id),
+                        page=page_num,
+                        position=gemini_fig.position,
+                        type=gemini_fig.type,
+                        description=gemini_fig.description,
+                        confidence=0.7,  # Geminiのみは低信頼度
+                        source='gemini_only'
+                    ))
 
-                        logger.debug(
-                            f"Page {page_num}: Gemini fallback for {gemini_fig.id} "
-                            f"(LayoutLMv3 detected nothing)"
-                        )
-                    else:
-                        logger.debug(
-                            f"Page {page_num}: Skipping Gemini {gemini_fig.id} "
-                            f"(LayoutLMv3 detected figures, but no match)"
-                        )
+                    logger.info(
+                        f"Page {page_num}: Adding Gemini-only figure {gemini_fig.id} "
+                        f"(LayoutLMv3 didn't detect, will be verified by Gemini)"
+                    )
 
         return integrated
 

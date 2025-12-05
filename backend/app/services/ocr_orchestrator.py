@@ -7,7 +7,6 @@ import asyncio
 import os
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from app.services.gemini_ocr_service import GeminiOCRService
 from app.services.layoutlmv3_detector import LayoutLMv3Detector
 from app.services.figure_integrator import FigureIntegrator, PagedFigureData
@@ -99,13 +98,12 @@ class OCROrchestrator:
             # 図解参照を挿入
             for fig in result.figures:
                 markdown_parts.append(
-                    f"![図{fig.id}](figures/page{result.page_number}_fig{fig.id}.png)\n\n"
+                    f"![図{fig.id}](figures/page{result.page_number}_{fig.id}.png)\n\n"
                 )
                 if fig.description:
                     markdown_parts.append(f"*{fig.description}*\n\n")
 
         return ''.join(markdown_parts)
-
 
     async def _save_markdown(self, job_id: str, markdown: str) -> str:
         """マスターマークダウンをStorageに保存"""
@@ -222,9 +220,11 @@ class OCROrchestrator:
             # FigureDataに変換して更新
             result.figures = []
             for idx, int_fig in enumerate(page_integrated):
+                # 一意のIDを生成（ページ番号 * 1000 + インデックス）
+                figure_id = result.page_number * 1000 + idx
                 result.figures.append(FigureData(
-                    id=f"fig_{result.page_number}_{idx}",
-                    type=int_fig.type,
+                    id=figure_id,
+                    type=int_fig.type,  # 既にfigure_integratorで変換済み
                     position=int_fig.position,
                     description=int_fig.description
                 ))
@@ -290,8 +290,43 @@ class OCROrchestrator:
                     output_dir=temp_dir
                 )
 
-                # Storageにアップロード
-                for img_path, fig_info in extracted_images:
+                # Gemini検証を有効にする場合はここで検証
+                logger.info(f"Starting Gemini verification for {len(extracted_images)} extracted figures")
+                verified_images = []
+                for idx, (img_path, fig_info) in enumerate(extracted_images):
+                    page_num = fig_info['page']
+                    logger.info(f"[{idx+1}/{len(extracted_images)}] Verifying figure on page {page_num}: {img_path}")
+
+                    # Geminiで画像を検証（事後検証方式）
+                    try:
+                        verification_result = await self.gemini.verify_figure_image(img_path)
+                        logger.info(f"Gemini verification result: {verification_result}")
+
+                        # is_figureがTrueで、かつconfidenceが0.5以上の場合のみ保持
+                        if verification_result.get('is_figure', False) and \
+                           verification_result.get('confidence', 0) >= 0.5:
+                            verified_images.append((img_path, fig_info))
+                            logger.info(
+                                f"✓ Page {page_num}: Figure VERIFIED as "
+                                f"{verification_result.get('type', 'unknown')} "
+                                f"(confidence={verification_result.get('confidence', 0):.2f})"
+                            )
+                        else:
+                            logger.info(
+                                f"✗ Page {page_num}: Figure REJECTED by Gemini - "
+                                f"{verification_result.get('reason', 'Unknown reason')} "
+                                f"(is_figure={verification_result.get('is_figure')}, "
+                                f"confidence={verification_result.get('confidence', 0):.2f})"
+                            )
+                    except Exception as e:
+                        logger.error(f"ERROR verifying figure on page {page_num}: {type(e).__name__}: {e}")
+                        logger.warning(f"Keeping figure anyway due to verification error")
+                        verified_images.append((img_path, fig_info))
+
+                logger.info(f"Gemini verification completed: {len(verified_images)}/{len(extracted_images)} figures kept")
+
+                # Storageにアップロード（検証済みの画像のみ）
+                for img_path, fig_info in verified_images:
                     page_num = fig_info['page']
                     fig_id = fig_info['figure'].id
 
@@ -306,7 +341,7 @@ class OCROrchestrator:
 
                     extracted_count += 1
 
-            logger.info(f"Extracted {extracted_count} figure images")
+            logger.info(f"Extracted {extracted_count} figure images (after Gemini verification)")
 
             # メタデータを作成
             figures_metadata = {

@@ -49,59 +49,89 @@ class PDFImageExtractor:
 
         try:
             for idx, fig_info in enumerate(figures):
-                page_num = fig_info['page']
-                page_idx = page_num - 1
+                try:
+                    page_num = fig_info['page']
+                    page_idx = page_num - 1
 
-                if page_idx < 0 or page_idx >= pdf_document.page_count:
-                    logger.warning(f"Invalid page number: {page_num}")
-                    continue
+                    if page_idx < 0 or page_idx >= pdf_document.page_count:
+                        logger.warning(f"Invalid page number: {page_num}")
+                        continue
 
-                page = pdf_document[page_idx]
+                    page = pdf_document[page_idx]
 
-                # 座標情報を取得
-                x = fig_info.get('x', 0)
-                y = fig_info.get('y', 0)
-                width = fig_info.get('width', 100)
-                height = fig_info.get('height', 100)
+                    # 座標情報を取得
+                    x = fig_info.get('x', 0)
+                    y = fig_info.get('y', 0)
+                    width = fig_info.get('width', 100)
+                    height = fig_info.get('height', 100)
 
-                # DPIスケーリングのためのマトリックス
-                mat = fitz.Matrix(self.dpi_scale, self.dpi_scale)
+                    # 座標の妥当性チェック
+                    if width <= 0 or height <= 0:
+                        logger.warning(
+                            f"Invalid dimensions for figure on page {page_num}: "
+                            f"width={width}, height={height}, skipping"
+                        )
+                        continue
 
-                # 抽出領域を計算（余白を追加）
-                # 注: 座標はDPIスケール前の値として扱う
-                x0 = max(0, x - margin)
-                y0 = max(0, y - margin)
-                x1 = min(page.rect.width, x + width + margin)
-                y1 = min(page.rect.height, y + height + margin)
+                    # DPIスケーリングのためのマトリックス
+                    mat = fitz.Matrix(self.dpi_scale, self.dpi_scale)
 
-                rect = fitz.Rect(x0, y0, x1, y1)
+                    # 抽出領域を計算（余白を追加）
+                    # 注: 座標はDPIスケール前の値として扱う
+                    x0 = max(0, x - margin)
+                    y0 = max(0, y - margin)
+                    x1 = min(page.rect.width, x + width + margin)
+                    y1 = min(page.rect.height, y + height + margin)
 
-                # 画像を抽出
-                pix = page.get_pixmap(matrix=mat, clip=rect)
+                    # 抽出領域の妥当性チェック
+                    if x1 <= x0 or y1 <= y0:
+                        logger.warning(
+                            f"Invalid rect for figure on page {page_num}: "
+                            f"rect=({x0}, {y0}, {x1}, {y1}), skipping"
+                        )
+                        continue
 
-                # ファイル名生成
-                figure = fig_info.get('figure')
-                if figure and hasattr(figure, 'id'):
-                    fig_id = figure.id
-                else:
-                    fig_id = f"fig_{idx}"
+                    rect = fitz.Rect(x0, y0, x1, y1)
 
-                if figure and hasattr(figure, 'type'):
-                    fig_type = figure.type
-                else:
-                    fig_type = "figure"
+                    # 画像を抽出
+                    pix = page.get_pixmap(matrix=mat, clip=rect)
 
-                filename = f"page{page_num}_{fig_type}_{fig_id}.png"
-                file_path = output_path / filename
+                    # ピクセルサイズのチェック
+                    if pix.width <= 0 or pix.height <= 0:
+                        logger.warning(
+                            f"Invalid pixmap size for figure on page {page_num}: "
+                            f"{pix.width}x{pix.height}, skipping"
+                        )
+                        continue
 
-                # 画像保存
-                pix.save(str(file_path))
-                extracted.append((str(file_path), fig_info))
+                    # ファイル名生成
+                    figure = fig_info.get('figure')
+                    if figure and hasattr(figure, 'id'):
+                        fig_id = figure.id
+                    else:
+                        fig_id = f"fig_{idx}"
 
-                logger.debug(
-                    f"Extracted: {filename} "
-                    f"({pix.width}x{pix.height}px from page {page_num})"
-                )
+                    if figure and hasattr(figure, 'type'):
+                        fig_type = figure.type
+                    else:
+                        fig_type = "figure"
+
+                    filename = f"page{page_num}_{fig_type}_{fig_id}.png"
+                    file_path = output_path / filename
+
+                    # 画像保存
+                    pix.save(str(file_path))
+                    extracted.append((str(file_path), fig_info))
+
+                    logger.debug(
+                        f"Extracted: {filename} "
+                        f"({pix.width}x{pix.height}px from page {page_num})"
+                    )
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to extract figure {idx} from page {fig_info.get('page', '?')}: {e}"
+                    )
 
         finally:
             pdf_document.close()

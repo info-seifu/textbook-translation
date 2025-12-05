@@ -32,6 +32,8 @@ services:
       # Persistent storage for uploads and local database
       - ./backend/uploads:/app/uploads
       - ./backend/storage:/app/storage
+      # Development: Mount code for hot reload
+      - ./backend/app:/app/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

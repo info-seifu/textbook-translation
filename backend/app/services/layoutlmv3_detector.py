@@ -37,7 +37,7 @@ class LayoutLMv3Detector:
     CPU/GPUの両方に対応。
     """
 
-    def __init__(self, confidence_threshold: float = 0.5):
+    def __init__(self, confidence_threshold: float = 0.7):
         """
         Args:
             confidence_threshold: 検出の信頼度閾値（0.0-1.0）
@@ -50,7 +50,7 @@ class LayoutLMv3Detector:
         try:
             # LayoutParser経由でモデルをロード
             # PubLayNet dataset用の事前学習済みモデル（論文・文書用）
-            self.model = lp.Detectron2LayoutModel(
+            self.model = lp.models.Detectron2LayoutModel(
                 'lp://PubLayNet/faster_rcnn_R_50_FPN_3x/config',
                 extra_config=["MODEL.ROI_HEADS.SCORE_THRESH_TEST", confidence_threshold],
                 label_map={0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"}
@@ -60,7 +60,7 @@ class LayoutLMv3Detector:
             logger.error(f"Failed to load model: {e}")
             # フォールバック: 基本的なFaster R-CNNモデル
             logger.info("Falling back to base Faster R-CNN model")
-            self.model = lp.Detectron2LayoutModel(
+            self.model = lp.models.Detectron2LayoutModel(
                 'lp://PubLayNet/faster_rcnn_R_50_FPN_3x/config',
                 label_map={0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"}
             )
@@ -86,15 +86,62 @@ class LayoutLMv3Detector:
                 page = pdf_document[page_idx]
 
                 # ページを画像に変換（RGB、高解像度）
-                mat = fitz.Matrix(2.0, 2.0)  # DPI 200
+                scale = 2.0
+                mat = fitz.Matrix(scale, scale)  # DPI 200
                 pix = page.get_pixmap(matrix=mat)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
                 # レイアウト分析
                 figures = self._detect_in_image(img, page_num)
-                all_figures.extend(figures)
 
-                logger.info(f"Page {page_num}: Detected {len(figures)} figures/tables")
+                # 座標を元のPDF座標系にスケールバック
+                for fig in figures:
+                    fig.x = int(fig.x / scale)
+                    fig.y = int(fig.y / scale)
+                    fig.width = int(fig.width / scale)
+                    fig.height = int(fig.height / scale)
+
+                # フィルタリング：小さすぎる検出や極端なアスペクト比を除外
+                filtered_figures = []
+                for fig in figures:
+                    # 最小サイズフィルタ（幅または高さが30ピクセル未満は除外）
+                    if fig.width < 30 or fig.height < 30:
+                        logger.debug(
+                            f"Page {page_num}: Skipping small figure "
+                            f"(width={fig.width}, height={fig.height})"
+                        )
+                        continue
+
+                    # アスペクト比フィルタ（1:8以上の極端な比率は除外）
+                    aspect_ratio = max(fig.width, fig.height) / min(fig.width, fig.height)
+                    if aspect_ratio > 8:
+                        logger.debug(
+                            f"Page {page_num}: Skipping figure with extreme aspect ratio "
+                            f"({aspect_ratio:.1f}:1)"
+                        )
+                        continue
+
+                    # 面積フィルタ（ページ面積の1%未満は除外）
+                    page_area = page.rect.width * page.rect.height
+                    fig_area = fig.width * fig.height
+                    if fig_area < page_area * 0.01:
+                        logger.debug(
+                            f"Page {page_num}: Skipping tiny figure "
+                            f"(area={fig_area:.0f}, {fig_area/page_area*100:.1f}% of page)"
+                        )
+                        continue
+
+                    filtered_figures.append(fig)
+
+                all_figures.extend(filtered_figures)
+
+                if len(filtered_figures) != len(figures):
+                    logger.info(
+                        f"Page {page_num}: Detected {len(filtered_figures)} figures/tables "
+                        f"(filtered from {len(figures)})"
+                    )
+                else:
+                    logger.info(f"Page {page_num}: Detected {len(filtered_figures)} figures/tables")
 
         finally:
             pdf_document.close()
